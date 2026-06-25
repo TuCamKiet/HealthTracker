@@ -12,6 +12,8 @@ import { auth } from "../services/firebaseConfig";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  sendEmailVerification,
+  signOut,
 } from "firebase/auth";
 
 export default function LoginScreen() {
@@ -29,15 +31,44 @@ export default function LoginScreen() {
     setIsLoading(true);
     try {
       if (isLogin) {
-        // Gọi API đăng nhập của Firebase
-        await signInWithEmailAndPassword(auth, email, password);
+        const userCredential = await signInWithEmailAndPassword(
+          auth,
+          email,
+          password,
+        );
+
+        await userCredential.user.reload();
+
+        if (!userCredential.user.emailVerified) {
+          Alert.alert(
+            "Email chưa xác thực",
+            "Vui lòng kiểm tra email và xác thực tài khoản trước khi đăng nhập.",
+          );
+
+          await signOut(auth);
+          return;
+        }
+
+        Alert.alert("Thành công", "Đăng nhập thành công!");
       } else {
-        // Gọi API đăng ký của Firebase
-        await createUserWithEmailAndPassword(auth, email, password);
-        Alert.alert("Thành công", "Đăng ký tài khoản thành công!");
+        const userCredential = await createUserWithEmailAndPassword(
+          auth,
+          email,
+          password,
+        );
+
+        await sendEmailVerification(userCredential.user);
+
+        Alert.alert(
+          "Xác thực Email",
+          "Tài khoản đã được tạo. Vui lòng kiểm tra email để xác thực trước khi đăng nhập.",
+        );
+
+        await signOut(auth);
+
+        setIsLogin(true);
       }
     } catch (error) {
-      // Bắt lỗi và hiển thị cho người dùng (ví dụ: sai mật khẩu, email đã tồn tại...)
       Alert.alert("Lỗi xác thực", error.message);
     } finally {
       setIsLoading(false);

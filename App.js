@@ -9,11 +9,13 @@ import { store } from "./src/redux/store";
 
 // Firebase imports
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "./src/services/firebaseConfig";
+import { auth, db } from "./src/services/firebaseConfig";
+import { doc, getDoc } from "firebase/firestore";
 
 // Import Screens
 import DashboardScreen from "./src/screens/DashboardScreen";
 import LoginScreen from "./src/screens/LoginScreen";
+import HistoryScreen from "./src/screens/HistoryScreen";
 
 import { TouchableOpacity, Text } from "react-native"; // Thêm TouchableOpacity và Text
 import ProfileScreen from "./src/screens/ProfileScreen";
@@ -23,15 +25,40 @@ const Stack = createNativeStackNavigator();
 export default function App() {
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
+  const [hasProfile, setHasProfile] = useState(false);
 
   // Lắng nghe trạng thái đăng nhập từ Firebase
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-      if (initializing) setInitializing(false);
+
+      if (currentUser) {
+        try {
+          const userRef = doc(db, "users", currentUser.uid);
+          const userSnap = await getDoc(userRef);
+
+          if (
+            userSnap.exists() &&
+            userSnap.data().height &&
+            userSnap.data().weight
+          ) {
+            setHasProfile(true);
+          } else {
+            setHasProfile(false);
+          }
+        } catch (error) {
+          console.log("Lỗi kiểm tra profile:", error);
+          setHasProfile(false);
+        }
+      } else {
+        setHasProfile(false);
+      }
+
+      if (initializing) {
+        setInitializing(false);
+      }
     });
 
-    // Dọn dẹp listener khi unmount
     return unsubscribe;
   }, [initializing]);
 
@@ -59,21 +86,35 @@ export default function App() {
                   title: "Health Overview",
                   headerStyle: { backgroundColor: "#FFFFFF" },
                   headerShadowVisible: false,
-                  // Thêm nút Profile ở góc phải Header
                   headerRight: () => (
-                    <TouchableOpacity
-                      onPress={() => navigation.navigate("Profile")}
-                    >
-                      <Text
-                        style={{
-                          color: "#3B82F6",
-                          fontWeight: "bold",
-                          fontSize: 16,
-                        }}
+                    <View style={{ flexDirection: "row", gap: 20 }}>
+                      <TouchableOpacity
+                        onPress={() => navigation.navigate("History")}
                       >
-                        Profile
-                      </Text>
-                    </TouchableOpacity>
+                        <Text
+                          style={{
+                            color: "#3B82F6",
+                            fontWeight: "bold",
+                            fontSize: 16,
+                          }}
+                        >
+                          History
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => navigation.navigate("Profile")}
+                      >
+                        <Text
+                          style={{
+                            color: "#3B82F6",
+                            fontWeight: "bold",
+                            fontSize: 16,
+                          }}
+                        >
+                          Profile
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   ),
                 })}
               />
@@ -81,6 +122,11 @@ export default function App() {
                 name="Profile"
                 component={ProfileScreen}
                 options={{ title: "Hồ sơ cá nhân" }}
+              />
+              <Stack.Screen
+                name="History"
+                component={HistoryScreen}
+                options={{ title: "Lịch sử hoạt động" }}
               />
             </>
           ) : (

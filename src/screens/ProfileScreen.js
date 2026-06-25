@@ -11,8 +11,12 @@ import {
 import { auth, db } from "../services/firebaseConfig";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { signOut } from "firebase/auth";
+import { useDispatch } from "react-redux";
+import { setUserData } from "../redux/slices/healthSlice";
 
 export default function ProfileScreen() {
+  const dispatch = useDispatch();
+
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -54,7 +58,6 @@ export default function ProfileScreen() {
     setIsLoading(true);
     try {
       const userRef = doc(db, "users", userId);
-      // Sử dụng merge: true để không ghi đè mất các trường dữ liệu khác (nếu có sau này)
       await setDoc(
         userRef,
         {
@@ -63,6 +66,11 @@ export default function ProfileScreen() {
           updatedAt: new Date(),
         },
         { merge: true },
+      );
+
+      // THÊM DÒNG NÀY: Cập nhật ngay vào Redux
+      dispatch(
+        setUserData({ weight: parseFloat(weight), height: parseFloat(height) }),
       );
 
       Alert.alert("Thành công", "Đã cập nhật hồ sơ!");
