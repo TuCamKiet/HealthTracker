@@ -24,6 +24,9 @@ export default function DashboardScreen() {
   //! Lấy dữ liệu từ Redux Store
   const { dailySteps, caloriesBurned } = useSelector((state) => state.health);
   const [isPedometerAvailable, setIsPedometerAvailable] = useState("checking");
+  //! Dùng để đo số bước chân để thông báo nghỉ ngơi và uống nước
+  const [hasNotified2k, setHasNotified2k] = useState(false);
+  const [hasNotified5k, setHasNotified5k] = useState(false);
 
   //!Notification
   useEffect(() => {
@@ -169,6 +172,39 @@ export default function DashboardScreen() {
       subscription?.remove();
     };
   }, [dispatch]);
+
+  //! Kích hoạt thông báo tức thì dựa trên mốc bước chân (Khoa học thể thao)
+  useEffect(() => {
+    const triggerStepBasedNotification = async () => {
+      // Mốc 1: 2000 bước -> Nhắc bù nước sau vận động
+      if (dailySteps >= 2000 && dailySteps < 5000 && !hasNotified2k) {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "🚰 Cơ thể đang mất nước!",
+            body: `Bạn đã đi được ${dailySteps} bước. Hãy uống một ngụm nước để bù khoáng nhé!`,
+            data: { type: "WATER_ACTIVITY_REMINDER" },
+          },
+          trigger: null, // trigger null nghĩa là bắn thông báo NGAY LẬP TỨC
+        });
+        setHasNotified2k(true); // Đánh dấu đã nhắc để không bị spam
+      }
+
+      // Mốc 2: 5000 bước liên tục -> Nhắc nghỉ ngơi tránh quá tải khớp
+      if (dailySteps >= 5000 && !hasNotified5k) {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "🧘‍♂️ Tới giờ nghỉ ngơi rồi!",
+            body: `Tuyệt vời! ${dailySteps} bước là một quãng đường dài. Hãy ngồi nghỉ 5-10 phút để cơ bắp phục hồi nhé.`,
+            data: { type: "REST_REMINDER" },
+          },
+          trigger: null,
+        });
+        setHasNotified5k(true);
+      }
+    };
+
+    triggerStepBasedNotification();
+  }, [dailySteps]);
 
   //!Tự động đồng bộ dữ liệu lên Firebase
   useEffect(() => {
