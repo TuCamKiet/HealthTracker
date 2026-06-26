@@ -49,6 +49,7 @@ export default function ProfileScreen() {
   }, [userId]);
 
   // Lưu dữ liệu lên Firestore
+  // Lưu dữ liệu lên Firestore
   const handleSaveProfile = async () => {
     if (!height || !weight) {
       Alert.alert("Lỗi", "Vui lòng nhập đầy đủ chiều cao và cân nặng!");
@@ -57,6 +58,12 @@ export default function ProfileScreen() {
 
     setIsLoading(true);
     try {
+      // 1. Cập nhật Redux trước
+      dispatch(
+        setUserData({ weight: parseFloat(weight), height: parseFloat(height) }),
+      );
+
+      // 2. Cập nhật lên Firebase
       const userRef = doc(db, "users", userId);
       await setDoc(
         userRef,
@@ -68,15 +75,10 @@ export default function ProfileScreen() {
         { merge: true },
       );
 
-      // THÊM DÒNG NÀY: Cập nhật ngay vào Redux
-      dispatch(
-        setUserData({ weight: parseFloat(weight), height: parseFloat(height) }),
-      );
-
-      Alert.alert("Thành công", "Đã cập nhật hồ sơ!");
+      // NGAY LẬP TỨC SAU DÒNG NÀY: onSnapshot ở App.js sẽ bắt được tín hiệu
+      // và tự động hất bạn văng thẳng vào Dashboard mà không cần dòng code chuyển trang nào!
     } catch (error) {
       Alert.alert("Lỗi", "Không thể lưu dữ liệu: " + error.message);
-    } finally {
       setIsLoading(false);
     }
   };

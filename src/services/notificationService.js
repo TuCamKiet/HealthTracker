@@ -31,7 +31,7 @@ export async function requestPermissionsAndSchedule() {
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-        seconds: 65, //5400, // 90 phút
+        seconds: 5400, // 90 phút
         repeats: true, //!IOS CẦN >= 60s MỚI DUYỆT YÊU CẦU THÔNG BÁO NÀY
       },
     });
@@ -46,7 +46,7 @@ export async function requestPermissionsAndSchedule() {
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-        seconds: 60, // 3600, // 60 phút
+        seconds: 3600, // 60 phút
         repeats: true, //!IOS CẦN >= 60s MỚI DUYỆT YÊU CẦU THÔNG BÁO NÀY
       },
     });
