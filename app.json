@@ -27,7 +27,14 @@
     },
     "plugins": [
       "@react-native-firebase/app",
-      "@react-native-firebase/messaging"
+      "@react-native-firebase/messaging",
+      [
+        "react-native-health",
+        {
+          "NSHealthShareUsageDescription": "HealthTracker cần đọc dữ liệu bước chân của bạn để tính toán lượng calo tiêu thụ và theo dõi lịch sử hoạt động.",
+          "NSHealthUpdateUsageDescription": "HealthTracker cần quyền ghi để lưu trữ dữ liệu sức khỏe của bạn."
+        }
+      ]
     ]
   }
 }
