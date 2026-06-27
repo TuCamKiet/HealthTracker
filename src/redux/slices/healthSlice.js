@@ -1,52 +1,106 @@
 import { createSlice } from "@reduxjs/toolkit";
+import { calculateWalkingStats } from "../../ultis/HealthCalculator";
 
 const initialState = {
-  dailySteps: 0,
-  caloriesBurned: 0,
-  weight: 65, // Mặc định 65kg
-  height: 170, // Mặc định 170cm
-};
+  // User Profile
+  weight: 65,
+  height: 170,
+  age: 22,
+  sex: "male",
 
-// Hàm tiện ích tính calo gộp (không cần tính quãng đường)
-const calculateCalories = (steps, height, weight) => {
-  // Công thức: Steps * Height(cm) * Weight(kg) * Hằng số động học gộp
-  const rawCalories = steps * height * weight * 0.000004289;
-  return parseFloat(rawCalories.toFixed(2));
+  // Activity
+  dailySteps: 0,
+  walkingSeconds: 0,
+
+  // Calculated
+  strideLength: 0,
+  distanceMeters: 0,
+  speed: 0,
+  met: 0,
+  caloriesBurned: 0,
 };
 
 export const healthSlice = createSlice({
   name: "health",
   initialState,
   reducers: {
-    setUserData: (state, action) => {
-      if (action.payload.weight) state.weight = action.payload.weight;
-      if (action.payload.height) state.height = action.payload.height;
+    setUserData(state, action) {
+      const { weight, height, age, sex } = action.payload;
+      if (weight != null) state.weight = weight;
+      if (height != null) state.height = height;
+      if (age != null) state.age = age;
+      if (sex != null) state.sex = sex;
 
-      // Tính lại calo ngay khi hồ sơ thay đổi
-      state.caloriesBurned = calculateCalories(
-        state.dailySteps,
-        state.height,
-        state.weight,
-      );
+      // Calculate baseline stride length immediately
+      const heightM = state.height / 100;
+      const ratio = state.sex === "female" ? 0.413 : 0.415;
+      state.strideLength = heightM * ratio;
     },
-    updateSteps: (state, action) => {
-      state.dailySteps = action.payload;
 
-      // Tính calo chuẩn khoa học mỗi khi có bước chân mới
-      state.caloriesBurned = calculateCalories(
-        action.payload,
-        state.height,
-        state.weight,
+    // --------------------------------------------------
+    // NEW: Accumulate Live Physics (Maximum Accuracy)
+    // --------------------------------------------------
+    addLiveActivity(state, action) {
+      const { deltaSteps, deltaDistance, deltaWalkingSeconds, deltaCalories } =
+        action.payload;
+
+      // Accumulate totals
+      state.dailySteps += deltaSteps;
+      state.distanceMeters += deltaDistance;
+      state.walkingSeconds += deltaWalkingSeconds;
+
+      // Accumulate precise live calories
+      state.caloriesBurned = Number(
+        (state.caloriesBurned + deltaCalories).toFixed(2),
       );
+
+      // Update average stats for the day
+      if (state.walkingSeconds > 0) {
+        state.speed = state.distanceMeters / state.walkingSeconds;
+      }
     },
-    resetDailyStats: (state) => {
+
+    // --------------------------------------------------
+    // Legacy update for full-day sync (Fallback)
+    // --------------------------------------------------
+    updateActivity(state, action) {
+      const { steps, walkingSeconds, overrideCalories } = action.payload;
+      state.dailySteps = steps;
+      state.walkingSeconds = walkingSeconds;
+
+      const stats = calculateWalkingStats({
+        steps,
+        height: state.height,
+        weight: state.weight,
+        sex: state.sex,
+        walkingSeconds,
+      });
+
+      state.strideLength = stats.strideLength;
+      state.distanceMeters = stats.distanceMeters;
+      state.speed = stats.speed;
+      state.met = stats.met;
+
+      // Only recalculate calories if we aren't accumulating live ones
+      if (overrideCalories !== undefined) {
+        state.caloriesBurned = overrideCalories;
+      } else if (state.caloriesBurned === 0) {
+        state.caloriesBurned = stats.calories;
+      }
+    },
+
+    resetDailyStats(state) {
       state.dailySteps = 0;
+      state.walkingSeconds = 0;
+      state.distanceMeters = 0;
+      state.strideLength = 0;
+      state.speed = 0;
+      state.met = 0;
       state.caloriesBurned = 0;
     },
   },
 });
 
-export const { updateSteps, resetDailyStats, setUserData } =
+export const { setUserData, addLiveActivity, updateActivity, resetDailyStats } =
   healthSlice.actions;
-
 export default healthSlice.reducer;

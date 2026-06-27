@@ -1,5 +1,1 @@
-Trụ cột 1: Ước lượng Sải chân (Anthropometric Data)
-- Khoa học: Độ dài sải chân của con người có tỷ lệ tương đối hằng định với chiều cao.
-- Hằng số: Nam = Chiều cao x 0.415 | Nữ = Chiều cao x 0.413 (Trung bình gộp thường lấy là 0.414).
-- Nguồn: Nghiên cứu về Tỷ lệ phân khúc cơ thể của Drillis R, Contini R (Body Segment Parameters).
-- Link đối chiếu: https://pubmed.ncbi.nlm.nih.gov/22216050/. (Nghiên cứu gốc về sinh trắc học thiết lập các hằng số tỷ lệ cơ thể này).
+https://www.omnicalculator.com/sports/

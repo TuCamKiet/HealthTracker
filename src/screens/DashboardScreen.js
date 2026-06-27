@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -11,24 +11,45 @@ import { useDispatch, useSelector } from "react-redux";
 import { auth, db } from "../services/firebaseConfig";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import {
-  updateSteps,
-  setUserData,
+  updateActivity,
   resetDailyStats,
+  addLiveActivity,
 } from "../redux/slices/healthSlice";
 import * as Notifications from "expo-notifications";
 import { requestPermissionsAndSchedule } from "../services/notificationService";
 import { Alert } from "react-native";
+import {
+  calculateDistance,
+  calculateSpeed,
+  calculateMET,
+  calculateCalories,
+} from "../ultis/HealthCalculator";
 
 export default function DashboardScreen() {
   const dispatch = useDispatch();
-  //! Lấy dữ liệu từ Redux Store
-  const { dailySteps, caloriesBurned } = useSelector((state) => state.health);
+
+  //! Pull stats from Redux (added weight for precise calorie calculation)
+  const {
+    dailySteps,
+    caloriesBurned,
+    distanceMeters,
+    walkingSeconds,
+    strideLength,
+    weight,
+  } = useSelector((state) => state.health);
+
   const [isPedometerAvailable, setIsPedometerAvailable] = useState("checking");
-  //! Dùng để đo số bước chân để thông báo nghỉ ngơi và uống nước
   const [hasNotified2k, setHasNotified2k] = useState(false);
   const [hasNotified5k, setHasNotified5k] = useState(false);
 
-  //!Notification
+  //! Live Speedometer State & Refs
+  const [instantSpeed, setInstantSpeed] = useState(0);
+  const sittingTimer = useRef(null);
+
+  //! Dynamic Live MET Calculation for UI
+  const liveMet = instantSpeed === 0 ? 1.0 : calculateMET(instantSpeed);
+
+  //! Notification
   useEffect(() => {
     requestPermissionsAndSchedule();
 
@@ -41,13 +62,11 @@ export default function DashboardScreen() {
     const responseListener =
       Notifications.addNotificationResponseReceivedListener((response) => {
         const data = response.notification.request.content.data;
-
         console.log("CLICKED:", data);
 
         if (data.type === "WATER_REMINDER") {
           Alert.alert("💧 Uống nước", "Bạn đã uống nước chưa?");
         }
-
         if (data.type === "MOVE_REMINDER") {
           Alert.alert("🏃‍♂️ Vận động", "Đi bộ vài bước nhé!");
         }
@@ -59,48 +78,33 @@ export default function DashboardScreen() {
     };
   }, []);
 
-  //!Tải dữ liệu hồ sơ từ Firestore khi vừa vào Dashboard
+  //! Load profile data from Firestore
   useEffect(() => {
     const loadCurrentSteps = async () => {
       const userId = auth.currentUser?.uid;
-
       if (!userId) return;
 
       const today = new Date().toISOString().split("T")[0];
 
-      console.log(today);
-
       try {
         const currentRef = doc(db, "users", userId, "history", today);
-
         const currentSnap = await getDoc(currentRef);
 
-        console.log("1", currentSnap, currentSnap.exists());
-
-        if (!currentSnap.exists()) {
-          return;
-        }
-
-        console.log("2");
+        if (!currentSnap.exists()) return;
 
         const data = currentSnap.data();
 
-        console.log(
-          data.date,
-          " ",
-          today,
-          data.date !== today,
-          data.steps,
-          data,
-        );
-
         if (data.date !== today) {
           dispatch(resetDailyStats());
-
           return;
         }
 
-        dispatch(updateSteps(data.steps || 0));
+        const steps = data.steps || 0;
+        const storedWalkingSeconds = data.walkingSeconds || (steps / 100) * 60;
+
+        dispatch(
+          updateActivity({ steps, walkingSeconds: storedWalkingSeconds }),
+        );
       } catch (error) {
         console.log("Load current steps error:", error);
       }
@@ -109,41 +113,39 @@ export default function DashboardScreen() {
     loadCurrentSteps();
   }, [dispatch]);
 
-  //! THÊM ĐOẠN NÀY ĐỂ LOG DỮ LIỆU THAY ĐỔI
+  //! Log changes
   useEffect(() => {
     console.log(
-      `[HealthTracker] Steps: ${dailySteps} | Calories: ${caloriesBurned} kcal`,
+      `[HealthTracker] Steps: ${dailySteps} | Calories: ${caloriesBurned} kcal | Distance: ${distanceMeters.toFixed(1)}m | Live MET: ${liveMet}`,
     );
-  }, [dailySteps, caloriesBurned]);
+  }, [dailySteps, caloriesBurned, distanceMeters, liveMet]);
 
-  //! Hàm lấy tổng bước hôm nay
+  //! Get today's total steps and estimate time
   const getTodaySteps = async () => {
     try {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
-
       const end = new Date();
 
       const result = await Pedometer.getStepCountAsync(start, end);
+      const steps = result.steps;
 
-      console.log("Today steps:", result.steps);
+      const estimatedSeconds = (steps / 100) * 60;
 
-      dispatch(updateSteps(result.steps));
+      dispatch(updateActivity({ steps, walkingSeconds: estimatedSeconds }));
     } catch (error) {
       console.log("Get steps error:", error);
     }
   };
 
+  //! Initialize Pedometer
   useEffect(() => {
     const initialize = async () => {
       const isAvailable = await Pedometer.isAvailableAsync();
-
       setIsPedometerAvailable(String(isAvailable));
-
       if (!isAvailable) return;
 
       const { status } = await Pedometer.requestPermissionsAsync();
-
       if (status !== "granted") return;
 
       await getTodaySteps();
@@ -152,17 +154,72 @@ export default function DashboardScreen() {
     initialize();
   }, []);
 
-  //!Đếm bằng Pedometer
+  //! Time-Delta Pedometer Watcher (Live Physics)
   useEffect(() => {
     let subscription;
+    let lastTime = Date.now();
+    let lastSessionSteps = 0;
 
     const subscribe = async () => {
       const isAvailable = await Pedometer.isAvailableAsync();
-
       if (!isAvailable) return;
 
-      subscription = Pedometer.watchStepCount(async () => {
-        await getTodaySteps();
+      // Initialize base step count so delta doesn't spike on load
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const initialResult = await Pedometer.getStepCountAsync(
+        start,
+        new Date(),
+      );
+      lastSessionSteps = initialResult.steps;
+
+      subscription = Pedometer.watchStepCount(async (result) => {
+        const now = Date.now();
+
+        // 1. Calculate Delta (Difference between now and last event)
+        const deltaSteps = result.steps - lastSessionSteps;
+        const deltaTimeSec = (now - lastTime) / 1000;
+
+        // 2. Process Live Physics if actually moving
+        if (deltaSteps > 0 && deltaTimeSec > 0 && strideLength > 0) {
+          // Execute the un-generalized pipeline
+          const deltaDistance = calculateDistance(deltaSteps, strideLength);
+          const liveSpeed = calculateSpeed(deltaDistance, deltaTimeSec);
+          const liveMetVal = calculateMET(liveSpeed);
+
+          // Calculate precise calories for just this window
+          const deltaCalories = calculateCalories(
+            weight,
+            deltaTimeSec,
+            liveMetVal,
+          );
+
+          // Update local UI
+          setInstantSpeed(liveSpeed);
+
+          // Accumulate into Redux
+          dispatch(
+            addLiveActivity({
+              deltaSteps,
+              deltaDistance,
+              deltaWalkingSeconds: deltaTimeSec,
+              deltaCalories,
+            }),
+          );
+        }
+
+        // Update tracking variables
+        lastSessionSteps = result.steps;
+        lastTime = now;
+
+        // -----------------------------------------
+        // The "Sitting" Timeout
+        // If 3 seconds pass with no new steps, drop speed to 0
+        // -----------------------------------------
+        if (sittingTimer.current) clearTimeout(sittingTimer.current);
+        sittingTimer.current = setTimeout(() => {
+          setInstantSpeed(0);
+        }, 3000);
       });
     };
 
@@ -170,13 +227,13 @@ export default function DashboardScreen() {
 
     return () => {
       subscription?.remove();
+      if (sittingTimer.current) clearTimeout(sittingTimer.current);
     };
-  }, [dispatch]);
+  }, [dispatch, strideLength, weight]); // Added weight as dependency
 
-  //! Kích hoạt thông báo tức thì dựa trên mốc bước chân (Khoa học thể thao)
+  //! Step-based Notifications
   useEffect(() => {
     const triggerStepBasedNotification = async () => {
-      // Mốc 1: 2000 bước -> Nhắc bù nước sau vận động
       if (dailySteps >= 2000 && dailySteps < 5000 && !hasNotified2k) {
         await Notifications.scheduleNotificationAsync({
           content: {
@@ -184,12 +241,11 @@ export default function DashboardScreen() {
             body: `Bạn đã đi được ${dailySteps} bước. Hãy uống một ngụm nước để bù khoáng nhé!`,
             data: { type: "WATER_ACTIVITY_REMINDER" },
           },
-          trigger: null, // trigger null nghĩa là bắn thông báo NGAY LẬP TỨC
+          trigger: null,
         });
-        setHasNotified2k(true); // Đánh dấu đã nhắc để không bị spam
+        setHasNotified2k(true);
       }
 
-      // Mốc 2: 5000 bước liên tục -> Nhắc nghỉ ngơi tránh quá tải khớp
       if (dailySteps >= 5000 && !hasNotified5k) {
         await Notifications.scheduleNotificationAsync({
           content: {
@@ -206,17 +262,14 @@ export default function DashboardScreen() {
     triggerStepBasedNotification();
   }, [dailySteps]);
 
-  //!Tự động đồng bộ dữ liệu lên Firebase
+  //! Auto-sync data to Firebase
   useEffect(() => {
-    // Không lưu nếu số bước bằng 0
     if (dailySteps === 0) return;
 
-    // Chờ 2 giây sau khi số bước ngừng thay đổi mới lưu để tiết kiệm lượt ghi (write)
     const timeoutId = setTimeout(async () => {
       const userId = auth.currentUser?.uid;
       if (!userId) return;
 
-      // Lấy ngày hôm nay theo định dạng YYYY-MM-DD
       const today = new Date().toISOString().split("T")[0];
       const historyRef = doc(db, "users", userId, "history", today);
 
@@ -226,7 +279,9 @@ export default function DashboardScreen() {
           {
             steps: dailySteps,
             calories: caloriesBurned,
-            date: today, // Lưu lại chuỗi ngày để sau này sắp xếp
+            distance: distanceMeters,
+            walkingSeconds: walkingSeconds,
+            date: today,
             updatedAt: new Date(),
           },
           { merge: true },
@@ -237,9 +292,8 @@ export default function DashboardScreen() {
       }
     }, 2000);
 
-    // Dọn dẹp timeout nếu người dùng tiếp tục đi bộ trước khi 2 giây kết thúc
     return () => clearTimeout(timeoutId);
-  }, [dailySteps, caloriesBurned]);
+  }, [dailySteps, caloriesBurned, distanceMeters, walkingSeconds]);
 
   return (
     <View style={styles.container}>
@@ -253,11 +307,43 @@ export default function DashboardScreen() {
           <Text style={styles.label}>Calories Burned</Text>
           <Text style={styles.value}>{caloriesBurned} kcal</Text>
 
+          <Text style={styles.label}>Distance</Text>
+          <Text style={styles.value}>
+            {(distanceMeters / 1000).toFixed(2)} km
+          </Text>
+
+          <Text style={styles.label}>Walking Time</Text>
+          <Text style={styles.value}>
+            {(() => {
+              const hh = Math.floor(walkingSeconds / 3600);
+              const mm = Math.floor((walkingSeconds % 3600) / 60);
+              const ss = Math.floor(walkingSeconds % 60);
+
+              return [hh, mm, ss]
+                .map((v) => String(v).padStart(2, "0"))
+                .join(":");
+            })()}
+          </Text>
+
+          <View style={{ flexDirection: "row", gap: 20, marginTop: 10 }}>
+            <View style={{ alignItems: "center" }}>
+              <Text style={styles.smallLabel}>Live Speed</Text>
+              <Text style={styles.smallValue}>
+                {instantSpeed.toFixed(2)} m/s
+              </Text>
+            </View>
+            <View style={{ alignItems: "center" }}>
+              <Text style={styles.smallLabel}>Intensity</Text>
+              {/* Displaying Live MET instead of Average MET */}
+              <Text style={styles.smallValue}>{liveMet} MET</Text>
+            </View>
+          </View>
+
           <Text style={styles.sensorStatus}>
             Sensor Status:{" "}
             {isPedometerAvailable === "true" ? "Active" : "Unavailable"}
           </Text>
-          {/* test notify button */}
+
           <Button
             title="Test Notification"
             onPress={async () => {
@@ -279,7 +365,7 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F7FA", // Màu nền sáng nhẹ
+    backgroundColor: "#F5F7FA",
     alignItems: "center",
     justifyContent: "center",
     padding: 20,
@@ -294,23 +380,34 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 5, // Đổ bóng cho Android
+    elevation: 5,
   },
   label: {
-    fontSize: 16,
+    fontSize: 14,
     color: "#6B7280",
     marginTop: 15,
     textTransform: "uppercase",
     letterSpacing: 1,
   },
   value: {
-    fontSize: 48,
+    fontSize: 42,
     fontWeight: "bold",
     color: "#111827",
-    marginVertical: 5,
+    marginVertical: 2,
+  },
+  smallLabel: {
+    fontSize: 12,
+    color: "#6B7280",
+    textTransform: "uppercase",
+  },
+  smallValue: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#3B82F6",
   },
   sensorStatus: {
     marginTop: 30,
+    marginBottom: 10,
     fontSize: 12,
     color: "#9CA3AF",
   },
