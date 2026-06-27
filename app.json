@@ -13,7 +13,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tucamkiet.HealthTracker",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -31,10 +35,15 @@
       [
         "react-native-health",
         {
-          "NSHealthShareUsageDescription": "HealthTracker cần đọc dữ liệu bước chân của bạn để tính toán lượng calo tiêu thụ và theo dõi lịch sử hoạt động.",
-          "NSHealthUpdateUsageDescription": "HealthTracker cần quyền ghi để lưu trữ dữ liệu sức khỏe của bạn."
+          "NSHealthShareUsageDescription": "Ứng dụng cần quyền đọc số bước chân của bạn để tính toán lượng calo tiêu thụ và theo dõi quá trình vận động.",
+          "NSHealthUpdateUsageDescription": "Ứng dụng cần quyền lưu trữ dữ liệu tập luyện của bạn."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "a91c53a2-e296-4ee5-bb91-e67b0204aba6"
+      }
+    }
   }
 }
