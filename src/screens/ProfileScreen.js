@@ -14,6 +14,14 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { useDispatch } from "react-redux";
 import { setUserData } from "../redux/slices/healthSlice";
+import { LinearGradient } from "expo-linear-gradient";
+import { colors, gradients, shadows, spacing } from "../utils/theme";
+import {
+  usePulseAnimation,
+  useFadeInAnimation,
+  useSlideInAnimation,
+  useBounceAnimation,
+} from "../utils/animations";
 
 export default function ProfileScreen() {
   const dispatch = useDispatch();
