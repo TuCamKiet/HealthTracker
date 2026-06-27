@@ -6,12 +6,21 @@ import {
   Dimensions,
   ActivityIndicator,
   TouchableOpacity,
+  ScrollView,
+  Animated,
 } from "react-native";
 import { BarChart } from "react-native-chart-kit";
+import { LinearGradient } from "expo-linear-gradient";
 
 // Import Firebase
 import { auth, db } from "../services/firebaseConfig";
 import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
+import { colors, spacing, shadows } from "../utils/theme";
+import {
+  usePulseAnimation,
+  useFadeInAnimation,
+  useSlideInAnimation,
+} from "../utils/animations";
 
 export default function HistoryScreen() {
   const [chartData, setChartData] = useState(null);
@@ -19,6 +28,11 @@ export default function HistoryScreen() {
 
   // State quản lý bộ lọc thời gian: 'week', 'month', 'year'
   const [timeRange, setTimeRange] = useState("week");
+
+  //style
+  const { opacity: fadeOpacity } = useFadeInAnimation(200);
+  const { transform: slideTransform } = useSlideInAnimation(true, 300);
+  const { opacity: pulseOpacity } = usePulseAnimation(2500);
 
   useEffect(() => {
     const fetchHistoryData = async () => {
@@ -114,140 +128,284 @@ export default function HistoryScreen() {
   }, [timeRange]); // Gọi lại API và tính toán mỗi khi timeRange thay đổi
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Lịch sử Bước chân</Text>
+    <LinearGradient
+      colors={[colors.darkBg, colors.darkBg2, colors.darkBg]}
+      style={styles.container}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+    >
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <Animated.View style={{ opacity: fadeOpacity }}>
+          {/* Header */}
+          <Animated.View style={slideTransform}>
+            <View style={styles.header}>
+              <Text style={styles.headerTitle}>HISTORY</Text>
+              <Text style={styles.headerSubtitle}>
+                Track Your Progress Over Time
+              </Text>
+            </View>
+          </Animated.View>
 
-      {/* THANH ĐIỀU HƯỚNG CHỌN THỜI GIAN */}
-      <View style={styles.filterContainer}>
-        <TouchableOpacity
-          style={[
-            styles.filterBtn,
-            timeRange === "week" && styles.filterBtnActive,
-          ]}
-          onPress={() => setTimeRange("week")}
-        >
-          <Text
-            style={[
-              styles.filterText,
-              timeRange === "week" && styles.filterTextActive,
-            ]}
-          >
-            7 Ngày
-          </Text>
-        </TouchableOpacity>
+          {/* Time Filter Buttons */}
+          <Animated.View style={slideTransform}>
+            <View style={styles.filterContainer}>
+              {["week", "month", "year"].map((range, index) => (
+                <TouchableOpacity
+                  key={range}
+                  style={[
+                    styles.filterBtn,
+                    timeRange === range && styles.filterBtnActive,
+                  ]}
+                  onPress={() => setTimeRange(range)}
+                >
+                  <LinearGradient
+                    colors={
+                      timeRange === range
+                        ? [colors.neonCyan, colors.neonPurple]
+                        : [colors.darkBg3, colors.darkBg2]
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.filterBtnGradient}
+                  >
+                    <Text
+                      style={[
+                        styles.filterText,
+                        timeRange === range && styles.filterTextActive,
+                      ]}
+                    >
+                      {range === "week"
+                        ? "7 Ngày"
+                        : range === "month"
+                          ? "30 Ngày"
+                          : "Năm"}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </Animated.View>
 
-        <TouchableOpacity
-          style={[
-            styles.filterBtn,
-            timeRange === "month" && styles.filterBtnActive,
-          ]}
-          onPress={() => setTimeRange("month")}
-        >
-          <Text
-            style={[
-              styles.filterText,
-              timeRange === "month" && styles.filterTextActive,
-            ]}
-          >
-            30 Ngày
-          </Text>
-        </TouchableOpacity>
+          {/* Chart Section */}
+          <Animated.View style={slideTransform}>
+            {isLoading || !chartData ? (
+              <LinearGradient
+                colors={[colors.darkBg2, colors.darkBg3]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.loadingCard}
+              >
+                <Animated.View
+                  style={{
+                    opacity: pulseOpacity,
+                  }}
+                >
+                  <ActivityIndicator color={colors.neonCyan} size="large" />
+                </Animated.View>
+                <Text style={styles.loadingText}>Loading your history...</Text>
+              </LinearGradient>
+            ) : (
+              <LinearGradient
+                colors={[colors.darkBg2, colors.darkBg3]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.chartCard}
+              >
+                <BarChart
+                  data={chartData}
+                  width={Dimensions.get("window").width - spacing.lg * 2 - 8}
+                  height={300}
+                  yAxisLabel=""
+                  yAxisSuffix=""
+                  fromZero={true}
+                  chartConfig={{
+                    backgroundColor: "transparent",
+                    backgroundGradientFrom: "transparent",
+                    backgroundGradientTo: "transparent",
+                    decimalPlaces: 0,
+                    color: (opacity = 1) => `rgba(0, 217, 255, ${opacity})`,
+                    labelColor: (opacity = 1) =>
+                      `rgba(176, 184, 212, ${opacity})`,
+                    style: {
+                      borderRadius: 16,
+                    },
+                    barPercentage: timeRange === "year" ? 0.3 : 0.7,
+                    propsForBackgroundLines: {
+                      stroke: colors.darkBg3,
+                      strokeWidth: 1,
+                      opacity: 0.3,
+                    },
+                  }}
+                  style={{ marginVertical: spacing.lg, borderRadius: 16 }}
+                />
+              </LinearGradient>
+            )}
+          </Animated.View>
 
-        <TouchableOpacity
-          style={[
-            styles.filterBtn,
-            timeRange === "year" && styles.filterBtnActive,
-          ]}
-          onPress={() => setTimeRange("year")}
-        >
-          <Text
-            style={[
-              styles.filterText,
-              timeRange === "year" && styles.filterTextActive,
-            ]}
-          >
-            Năm Nay
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* HIỂN THỊ BIỂU ĐỒ HOẶC LOADING */}
-      {isLoading || !chartData ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#3B82F6" />
-        </View>
-      ) : (
-        <BarChart
-          data={chartData}
-          width={Dimensions.get("window").width - 40}
-          height={300}
-          yAxisLabel=""
-          yAxisSuffix=""
-          fromZero={true}
-          chartConfig={{
-            backgroundColor: "#ffffff",
-            backgroundGradientFrom: "#ffffff",
-            backgroundGradientTo: "#ffffff",
-            decimalPlaces: 0,
-            color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`,
-            labelColor: (opacity = 1) => `rgba(17, 24, 39, ${opacity})`,
-            style: { borderRadius: 16 },
-            barPercentage: timeRange === "year" ? 0.3 : 0.7, // Thu nhỏ cột nếu hiển thị cả 12 tháng
-          }}
-          style={{ marginVertical: 8, borderRadius: 16 }}
-        />
-      )}
-    </View>
+          {/* Stats Summary */}
+          {chartData && !isLoading && (
+            <Animated.View style={slideTransform}>
+              <LinearGradient
+                colors={[colors.darkBg2, colors.darkBg3]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.summaryCard}
+              >
+                <View style={styles.summaryRow}>
+                  <View style={styles.summaryItem}>
+                    <Text style={styles.summaryLabel}>📊 Total Steps</Text>
+                    <Text style={styles.summaryValue}>
+                      {chartData.datasets[0].data.reduce((a, b) => a + b, 0)}
+                    </Text>
+                  </View>
+                  <View style={styles.divider} />
+                  <View style={styles.summaryItem}>
+                    <Text style={styles.summaryLabel}>📈 Average</Text>
+                    <Text style={styles.summaryValue}>
+                      {Math.round(
+                        chartData.datasets[0].data.reduce((a, b) => a + b, 0) /
+                          (chartData.datasets[0].data.length !== 12 &&
+                          chartData.datasets[0].data.length !== 4
+                            ? 7
+                            : chartData.datasets[0].data.length),
+                      )}
+                    </Text>
+                  </View>
+                </View>
+              </LinearGradient>
+            </Animated.View>
+          )}
+        </Animated.View>
+      </ScrollView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    backgroundColor: "#F5F7FA",
-    alignItems: "center",
   },
-  center: {
-    height: 300, // Giữ chiều cao cố định để giao diện không bị giật khi loading
-    justifyContent: "center",
-    alignItems: "center",
+  scrollContent: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 15,
-    color: "#111827",
+  header: {
+    marginBottom: spacing.xxl,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: "900",
+    color: colors.neonCyan,
+    letterSpacing: 2,
+    textShadowColor: colors.neonCyan,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    fontWeight: "600",
+    letterSpacing: 0.5,
   },
   filterContainer: {
     flexDirection: "row",
-    backgroundColor: "#E5E7EB",
-    borderRadius: 8,
-    padding: 4,
-    marginBottom: 20,
-    width: "100%",
+    gap: spacing.md,
+    marginBottom: spacing.xl,
   },
   filterBtn: {
     flex: 1,
-    paddingVertical: 8,
-    alignItems: "center",
-    borderRadius: 6,
+    borderRadius: 12,
+    overflow: "hidden",
   },
   filterBtnActive: {
-    backgroundColor: "#FFFFFF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    ...shadows.neonCyan,
+  },
+  filterBtnGradient: {
+    paddingVertical: spacing.md,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.neonCyan,
+    borderOpacity: 0.3,
   },
   filterText: {
-    fontSize: 14,
-    color: "#6B7280",
-    fontWeight: "500",
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: "700",
+    letterSpacing: 0.5,
   },
   filterTextActive: {
-    color: "#3B82F6",
-    fontWeight: "bold",
+    color: colors.textPrimary,
+    fontWeight: "800",
+  },
+  loadingCard: {
+    borderRadius: 16,
+    padding: spacing.xxl,
+    alignItems: "center",
+    justifyContent: "center",
+    height: 300,
+    borderWidth: 1,
+    borderColor: colors.neonCyan,
+    borderOpacity: 0.2,
+    marginBottom: spacing.xl,
+  },
+  loadingText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: spacing.lg,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+  },
+  chartCard: {
+    borderRadius: 16,
+    padding: spacing.lg,
+    marginBottom: spacing.xl,
+    borderWidth: 1,
+    borderColor: colors.neonCyan,
+    borderOpacity: 0.2,
+    ...shadows.soft,
+  },
+  summaryCard: {
+    borderRadius: 16,
+    padding: spacing.lg,
+    marginBottom: spacing.xl,
+    borderWidth: 1,
+    borderColor: colors.neonMagenta,
+    borderOpacity: 0.2,
+    ...shadows.soft,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  summaryItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+  divider: {
+    width: 1,
+    height: 50,
+    backgroundColor: colors.neonMagenta,
+    opacity: 0.2,
+  },
+  summaryLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginBottom: spacing.sm,
+  },
+  summaryValue: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: colors.neonMagenta,
+    textShadowColor: colors.neonMagenta,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
 });

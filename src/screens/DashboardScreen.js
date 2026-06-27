@@ -4,8 +4,18 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
-  Button,
+  TouchableOpacity,
+  ScrollView,
+  Animated,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { colors, spacing, shadows } from "../utils/theme";
+import {
+  usePulseAnimation,
+  useFadeInAnimation,
+  useSlideInAnimation,
+  useScalePulseAnimation,
+} from "../utils/animations";
 import { Pedometer } from "expo-sensors";
 import { useDispatch, useSelector } from "react-redux";
 import { auth, db } from "../services/firebaseConfig";
@@ -23,7 +33,7 @@ import {
   calculateSpeed,
   calculateMET,
   calculateCalories,
-} from "../ultis/HealthCalculator";
+} from "../utils/HealthCalculator";
 
 export default function DashboardScreen() {
   const dispatch = useDispatch();
@@ -48,6 +58,12 @@ export default function DashboardScreen() {
 
   //! Dynamic Live MET Calculation for UI
   const liveMet = instantSpeed === 0 ? 1.0 : calculateMET(instantSpeed);
+
+  //! for animation
+  const { opacity: fadeOpacity } = useFadeInAnimation(200);
+  const { transform: slideTransform } = useSlideInAnimation(true, 300);
+  const { opacity: pulseOpacity } = usePulseAnimation(2500);
+  const scaleAnimation = useScalePulseAnimation(0.95, 1.05, 2000);
 
   //! Notification
   useEffect(() => {
@@ -296,119 +312,440 @@ export default function DashboardScreen() {
   }, [dailySteps, caloriesBurned, distanceMeters, walkingSeconds]);
 
   return (
-    <View style={styles.container}>
+    <LinearGradient
+      colors={[colors.darkBg, colors.darkBg2, colors.darkBg]}
+      style={styles.container}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+    >
       {isPedometerAvailable === "checking" ? (
-        <ActivityIndicator size="large" color="#0000ff" />
-      ) : (
-        <View style={styles.statsCard}>
-          <Text style={styles.label}>Today's Steps</Text>
-          <Text style={styles.value}>{dailySteps}</Text>
-
-          <Text style={styles.label}>Calories Burned</Text>
-          <Text style={styles.value}>{caloriesBurned} kcal</Text>
-
-          <Text style={styles.label}>Distance</Text>
-          <Text style={styles.value}>
-            {(distanceMeters / 1000).toFixed(2)} km
-          </Text>
-
-          <Text style={styles.label}>Walking Time</Text>
-          <Text style={styles.value}>
-            {(() => {
-              const hh = Math.floor(walkingSeconds / 3600);
-              const mm = Math.floor((walkingSeconds % 3600) / 60);
-              const ss = Math.floor(walkingSeconds % 60);
-
-              return [hh, mm, ss]
-                .map((v) => String(v).padStart(2, "0"))
-                .join(":");
-            })()}
-          </Text>
-
-          <View style={{ flexDirection: "row", gap: 20, marginTop: 10 }}>
-            <View style={{ alignItems: "center" }}>
-              <Text style={styles.smallLabel}>Live Speed</Text>
-              <Text style={styles.smallValue}>
-                {instantSpeed.toFixed(2)} m/s
-              </Text>
-            </View>
-            <View style={{ alignItems: "center" }}>
-              <Text style={styles.smallLabel}>Intensity</Text>
-              {/* Displaying Live MET instead of Average MET */}
-              <Text style={styles.smallValue}>{liveMet} MET</Text>
-            </View>
-          </View>
-
-          <Text style={styles.sensorStatus}>
-            Sensor Status:{" "}
-            {isPedometerAvailable === "true" ? "Active" : "Unavailable"}
-          </Text>
-
-          <Button
-            title="Test Notification"
-            onPress={async () => {
-              await Notifications.scheduleNotificationAsync({
-                content: {
-                  title: "TEST",
-                  body: "Hello World",
-                },
-                trigger: null,
-              });
-            }}
-          />
+        <View style={styles.loaderContainer}>
+          <LinearGradient
+            colors={[colors.neonCyan, colors.neonPurple]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.loaderGradient}
+          >
+            <ActivityIndicator color={colors.textPrimary} size="large" />
+          </LinearGradient>
         </View>
+      ) : (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <Animated.View style={{ opacity: fadeOpacity }}>
+            {/* Header */}
+            <Animated.View style={slideTransform}>
+              <View style={styles.header}>
+                <Text style={styles.headerTitle}>LIVE STATS</Text>
+                <Text style={styles.headerSubtitle}>
+                  Real-time Fitness Tracking
+                </Text>
+              </View>
+            </Animated.View>
+
+            {/* Main Steps Card */}
+            <Animated.View style={slideTransform}>
+              <LinearGradient
+                colors={[colors.darkBg2, colors.darkBg3]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.mainCard}
+              >
+                <Animated.View style={[styles.stepPulse, scaleAnimation]}>
+                  <LinearGradient
+                    colors={[colors.neonCyan, colors.neonPurple]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.stepPulseGradient}
+                  />
+                </Animated.View>
+
+                <Text style={styles.label}>🚶 Steps Today</Text>
+                <Animated.Text
+                  style={[
+                    styles.mainValue,
+                    {
+                      opacity: pulseOpacity,
+                    },
+                  ]}
+                >
+                  {dailySteps}
+                </Animated.Text>
+                <Text style={styles.subtext}>Steps</Text>
+              </LinearGradient>
+            </Animated.View>
+
+            {/* Quick Stats Grid */}
+            <Animated.View style={slideTransform}>
+              <View style={styles.statsGrid}>
+                {/* Calories Card */}
+                <LinearGradient
+                  colors={[colors.neonYellow + "20", colors.neonYellow + "10"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.statCard, { borderColor: colors.neonYellow }]}
+                >
+                  <Text style={styles.statIcon}>🔥</Text>
+                  <Text style={styles.statLabel}>Calories</Text>
+                  <Text
+                    style={[styles.statValue, { color: colors.neonYellow }]}
+                  >
+                    {caloriesBurned}
+                  </Text>
+                  <Text style={styles.statUnit}>kcal</Text>
+                </LinearGradient>
+
+                {/* Distance Card */}
+                <LinearGradient
+                  colors={[colors.neonGreen + "20", colors.neonGreen + "10"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.statCard, { borderColor: colors.neonGreen }]}
+                >
+                  <Text style={styles.statIcon}>📍</Text>
+                  <Text style={styles.statLabel}>Distance</Text>
+                  <Text style={[styles.statValue, { color: colors.neonGreen }]}>
+                    {(distanceMeters / 1000).toFixed(2)}
+                  </Text>
+                  <Text style={styles.statUnit}>km</Text>
+                </LinearGradient>
+              </View>
+            </Animated.View>
+
+            {/* Live Metrics */}
+            <Animated.View style={slideTransform}>
+              <View style={styles.liveMetricsContainer}>
+                <Text style={styles.metricsTitle}>⚡ Live Metrics</Text>
+
+                {/* Speed Card */}
+                <LinearGradient
+                  colors={[colors.neonBlue + "20", colors.neonCyan + "10"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.metricCard, { borderColor: colors.neonCyan }]}
+                >
+                  <View style={styles.metricHeader}>
+                    <Text style={styles.metricIcon}>💨</Text>
+                    <Text style={styles.metricName}>Speed</Text>
+                  </View>
+                  <Text
+                    style={[styles.metricBigValue, { color: colors.neonCyan }]}
+                  >
+                    {instantSpeed.toFixed(2)}
+                  </Text>
+                  <Text style={styles.metricUnitSmall}>m/s</Text>
+                </LinearGradient>
+
+                {/* Intensity Card */}
+                <LinearGradient
+                  colors={[colors.neonMagenta + "20", colors.neonPink + "10"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[
+                    styles.metricCard,
+                    { borderColor: colors.neonMagenta },
+                  ]}
+                >
+                  <View style={styles.metricHeader}>
+                    <Text style={styles.metricIcon}>⚡</Text>
+                    <Text style={styles.metricName}>Intensity</Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.metricBigValue,
+                      { color: colors.neonMagenta },
+                    ]}
+                  >
+                    {liveMet.toFixed(1)}
+                  </Text>
+                  <Text style={styles.metricUnitSmall}>MET</Text>
+                </LinearGradient>
+
+                {/* Time Card */}
+                <LinearGradient
+                  colors={[colors.neonGreen + "20", colors.neonCyan + "10"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.metricCard, { borderColor: colors.neonGreen }]}
+                >
+                  <View style={styles.metricHeader}>
+                    <Text style={styles.metricIcon}>⏱️</Text>
+                    <Text style={styles.metricName}>Time</Text>
+                  </View>
+                  <Text
+                    style={[styles.metricBigValue, { color: colors.neonGreen }]}
+                  >
+                    {(() => {
+                      const hh = Math.floor(walkingSeconds / 3600);
+                      const mm = Math.floor((walkingSeconds % 3600) / 60);
+                      const ss = Math.floor(walkingSeconds % 60);
+                      return [hh, mm, ss]
+                        .map((v) => String(v).padStart(2, "0"))
+                        .join(":");
+                    })()}
+                  </Text>
+                  <Text style={styles.metricUnitSmall}>hh:mm:ss</Text>
+                </LinearGradient>
+              </View>
+            </Animated.View>
+
+            {/* Status Section */}
+            <Animated.View style={slideTransform}>
+              <LinearGradient
+                colors={[colors.darkBg3, colors.darkBg2]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.statusCard}
+              >
+                <View style={styles.statusItem}>
+                  <Text style={styles.statusIcon}>📡</Text>
+                  <View style={styles.statusContent}>
+                    <Text style={styles.statusLabel}>Sensor Status</Text>
+                    <Text
+                      style={[
+                        styles.statusValue,
+                        {
+                          color:
+                            isPedometerAvailable === "true"
+                              ? colors.neonGreen
+                              : colors.neonYellow,
+                        },
+                      ]}
+                    >
+                      {isPedometerAvailable === "true"
+                        ? "● Active"
+                        : "● Unavailable"}
+                    </Text>
+                  </View>
+                </View>
+              </LinearGradient>
+            </Animated.View>
+          </Animated.View>
+        </ScrollView>
       )}
-    </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F7FA",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 20,
   },
-  statsCard: {
-    backgroundColor: "#FFFFFF",
-    padding: 30,
-    borderRadius: 15,
-    width: "100%",
+  loaderContainer: {
+    flex: 1,
+    justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
+  },
+  loaderGradient: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    justifyContent: "center",
+    alignItems: "center",
+    ...shadows.neonCyan,
+  },
+  scrollContent: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
+  },
+  header: {
+    marginBottom: spacing.xxl,
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: "900",
+    color: colors.neonCyan,
+    letterSpacing: 2,
+    textShadowColor: colors.neonCyan,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+  },
+  mainCard: {
+    borderRadius: 20,
+    padding: spacing.xxl,
+    marginBottom: spacing.xl,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.neonCyan,
+    borderOpacity: 0.2,
+    ...shadows.soft,
+    position: "relative",
+    overflow: "hidden",
+  },
+  stepPulse: {
+    position: "absolute",
+    top: -50,
+    right: -50,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+  },
+  stepPulseGradient: {
+    width: "100%",
+    height: "100%",
+    opacity: 0.1,
   },
   label: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginTop: 15,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  value: {
-    fontSize: 42,
-    fontWeight: "bold",
-    color: "#111827",
-    marginVertical: 2,
-  },
-  smallLabel: {
     fontSize: 12,
-    color: "#6B7280",
+    color: colors.textSecondary,
+    fontWeight: "700",
+    letterSpacing: 1.5,
     textTransform: "uppercase",
+    marginBottom: spacing.sm,
   },
-  smallValue: {
-    fontSize: 18,
+  mainValue: {
+    fontSize: 64,
+    fontWeight: "900",
+    color: colors.neonCyan,
+    textShadowColor: colors.neonCyan,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 15,
+  },
+  subtext: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
     fontWeight: "600",
-    color: "#3B82F6",
   },
-  sensorStatus: {
-    marginTop: 30,
-    marginBottom: 10,
+  statsGrid: {
+    flexDirection: "row",
+    gap: spacing.md,
+    marginBottom: spacing.xl,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: 16,
+    padding: spacing.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderOpacity: 0.3,
+    minHeight: 140,
+  },
+  statIcon: {
+    fontSize: 28,
+    marginBottom: spacing.sm,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginBottom: spacing.sm,
+  },
+  statValue: {
+    fontSize: 28,
+    fontWeight: "900",
+    marginBottom: spacing.xs,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
+  statUnit: {
+    fontSize: 10,
+    color: colors.textMuted,
+    fontWeight: "600",
+  },
+  liveMetricsContainer: {
+    marginBottom: spacing.xl,
+  },
+  metricsTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: colors.neonCyan,
+    letterSpacing: 1,
+    marginBottom: spacing.lg,
+    textTransform: "uppercase",
+  },
+  metricCard: {
+    borderRadius: 14,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderOpacity: 0.3,
+    ...shadows.soft,
+  },
+  metricHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: spacing.md,
+  },
+  metricIcon: {
+    fontSize: 22,
+    marginRight: spacing.md,
+  },
+  metricName: {
     fontSize: 12,
-    color: "#9CA3AF",
+    color: colors.textSecondary,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  metricBigValue: {
+    fontSize: 32,
+    fontWeight: "900",
+    marginBottom: spacing.xs,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
+  },
+  metricUnitSmall: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: "600",
+  },
+  statusCard: {
+    borderRadius: 14,
+    padding: spacing.lg,
+    marginBottom: spacing.xl,
+    borderWidth: 1,
+    borderColor: colors.neonGreen,
+    borderOpacity: 0.2,
+    ...shadows.soft,
+  },
+  statusItem: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  statusIcon: {
+    fontSize: 24,
+    marginRight: spacing.lg,
+  },
+  statusContent: {
+    flex: 1,
+  },
+  statusLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginBottom: spacing.xs,
+  },
+  statusValue: {
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  testButton: {
+    paddingVertical: spacing.lg,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    ...shadows.neonPurple,
+  },
+  testButtonText: {
+    color: colors.textPrimary,
+    fontWeight: "800",
+    fontSize: 14,
+    letterSpacing: 1,
   },
 });

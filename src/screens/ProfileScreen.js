@@ -11,12 +11,19 @@ import {
   ScrollView,
   Pressable,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { auth, db } from "../services/firebaseConfig";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { useDispatch } from "react-redux";
 import { setUserData } from "../redux/slices/healthSlice";
+import { LinearGradient } from "expo-linear-gradient";
+import { colors, gradients, shadows, spacing } from "../utils/theme";
+import {
+  usePulseAnimation,
+  useFadeInAnimation,
+  useSlideInAnimation,
+  useBounceAnimation,
+} from "../utils/animations";
 
 export default function ProfileScreen() {
   const dispatch = useDispatch();
@@ -28,6 +35,7 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
 
+  // Lấy User ID của người dùng đang đăng nhập
   const userId = auth.currentUser?.uid;
 
   const { opacity: fadeOpacity } = useFadeInAnimation(200);
@@ -36,6 +44,7 @@ export default function ProfileScreen() {
   const { opacity: pulseOpacity } = usePulseAnimation(2500);
   const { transform: bounceTransform, bounce } = useBounceAnimation();
 
+  // Tải dữ liệu từ Firestore khi mở màn hình
   useEffect(() => {
     const fetchUserData = async () => {
       if (!userId) return;
@@ -60,6 +69,8 @@ export default function ProfileScreen() {
     fetchUserData();
   }, [userId]);
 
+  // Lưu dữ liệu lên Firestore
+  // Lưu dữ liệu lên Firestore
   const handleSaveProfile = async () => {
     if (!height || !weight || !age || !sex) {
       Alert.alert("Lỗi", "Vui lòng nhập đầy đủ thông tin");
@@ -69,6 +80,7 @@ export default function ProfileScreen() {
     setIsLoading(true);
     bounce();
     try {
+      // 1. Cập nhật Redux trước
       dispatch(
         setUserData({
           weight: parseFloat(weight),
@@ -78,6 +90,7 @@ export default function ProfileScreen() {
         }),
       );
 
+      // 2. Cập nhật lên Firebase
       const userRef = doc(db, "users", userId);
       await setDoc(
         userRef,
@@ -92,7 +105,9 @@ export default function ProfileScreen() {
       );
 
       setIsLoading(false);
-      Alert.alert("Thành công", "Đã cập nhật dữ liệu ✅");
+      Alert.alert("Thành công", "Đã cập nhật dữ liệu ✅ ");
+      // NGAY LẬP TỨC SAU DÒNG NÀY: onSnapshot ở App.js sẽ bắt được tín hiệu
+      // và tự động hất bạn văng thẳng vào Dashboard mà không cần dòng code chuyển trang nào!
     } catch (error) {
       Alert.alert("Lỗi", "Không thể lưu dữ liệu: " + error.message);
       setIsLoading(false);
@@ -322,14 +337,18 @@ export default function ProfileScreen() {
                 <View style={styles.bmiContent}>
                   <Text style={styles.bmiLabel}>📊 BMI Index</Text>
                   <Text style={styles.bmiValue}>
-                    {(parseFloat(weight) / ((parseFloat(height) / 100) ** 2)).toFixed(1)}
+                    {(
+                      parseFloat(weight) /
+                      (parseFloat(height) / 100) ** 2
+                    ).toFixed(1)}
                   </Text>
                   <Text style={styles.bmiStatus}>
-                    {parseFloat(weight) / ((parseFloat(height) / 100) ** 2) < 18.5
+                    {parseFloat(weight) / (parseFloat(height) / 100) ** 2 < 18.5
                       ? "Underweight"
-                      : parseFloat(weight) / ((parseFloat(height) / 100) ** 2) < 25
-                      ? "Normal"
-                      : "Overweight"}
+                      : parseFloat(weight) / (parseFloat(height) / 100) ** 2 <
+                          25
+                        ? "Normal"
+                        : "Overweight"}
                   </Text>
                 </View>
                 <View style={styles.bmiIcon}>

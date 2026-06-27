@@ -1,5 +1,5 @@
 import { createSlice } from "@reduxjs/toolkit";
-import { calculateWalkingStats } from "../../ultis/HealthCalculator";
+import { calculateWalkingStats } from "../../utils/HealthCalculator";
 
 const initialState = {
   // User Profile
