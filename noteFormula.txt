@@ -1,3 +1,5 @@
-Sải chân: $Height \times 0.00414$ Quãng đường (km): $\frac{Steps \times Sải chân}{1000}$ Calo: $Quãng đường \times Weight \times 1.036$ Chúng ta thay thế trực tiếp vào nhau để tạo thành phương trình tổng quát:$$Calories = \left( \frac{Steps \times Height \times 0.00414}{1000} \right) \times Weight \times 1.036$$Rút gọn tất cả các hằng số ($0.00414 \times 1.036 \div 1000$), ta có công thức siêu tốc:$$Calories = Steps \times Height \times Weight \times 0.000004289$$Áp dụng thử ví dụ của một người cao 170 cm, nặng 65 kg, đi 10,000 bước:
-$10000 \times 170 \times 65 \times 0.000004289 = 473.93$ kcal.
-Kết quả này khớp hoàn toàn với kết quả 473.9 kcal khi tính tách rời từng bước.
+Trụ cột 1: Ước lượng Sải chân (Anthropometric Data)
+- Khoa học: Độ dài sải chân của con người có tỷ lệ tương đối hằng định với chiều cao.
+- Hằng số: Nam = Chiều cao x 0.415 | Nữ = Chiều cao x 0.413 (Trung bình gộp thường lấy là 0.414).
+- Nguồn: Nghiên cứu về Tỷ lệ phân khúc cơ thể của Drillis R, Contini R (Body Segment Parameters).
+- Link đối chiếu: https://pubmed.ncbi.nlm.nih.gov/22216050/. (Nghiên cứu gốc về sinh trắc học thiết lập các hằng số tỷ lệ cơ thể này).
