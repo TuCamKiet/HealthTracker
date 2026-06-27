@@ -17,12 +17,6 @@ import {
   sendEmailVerification,
   signOut,
 } from "firebase/auth";
-import { colors, gradients, shadows } from "../ultis/theme";
-import {
-  usePulseAnimation,
-  useBounceAnimation,
-  useFadeInAnimation,
-} from "../ultis/animations";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -89,168 +83,51 @@ export default function LoginScreen() {
   };
 
   return (
-    <LinearGradient
-      colors={[colors.darkBg, colors.darkBg2, colors.darkBg]}
-      style={styles.container}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-    >
-      {/* Animated Background Glow */}
-      <Animated.View
-        style={[
-          styles.glowContainer,
-          {
-            opacity: pulseOpacity,
-          },
-        ]}
+    <View style={styles.container}>
+      <Text style={styles.title}>
+        {isLogin ? "Welcome Back" : "Create Account"}
+      </Text>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        value={email}
+        onChangeText={setEmail}
+        keyboardType="email-address"
+        autoCapitalize="none"
+      />
+
+      <TextInput
+        style={styles.input}
+        placeholder="Password"
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+      />
+
+      <TouchableOpacity
+        style={styles.button}
+        onPress={handleAuthentication}
+        disabled={isLoading}
       >
-        <LinearGradient
-          colors={[colors.neonCyan, colors.neonMagenta]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.glowGradient}
-        />
-      </Animated.View>
+        {isLoading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.buttonText}>{isLogin ? "Login" : "Sign Up"}</Text>
+        )}
+      </TouchableOpacity>
 
-      <Animated.View style={[styles.contentWrapper, { opacity: fadeOpacity }]}>
-        {/* Header Section */}
-        <View style={styles.headerSection}>
-          <Animated.View
-            style={[
-              styles.iconContainer,
-              {
-                transform: [
-                  {
-                    scale: pulseOpacity.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0.9, 1.1],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <LinearGradient
-              colors={[colors.neonCyan, colors.neonPurple]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.iconGradient}
-            >
-              <Text style={styles.icon}>💪</Text>
-            </LinearGradient>
-          </Animated.View>
-
-          <Text style={styles.title}>{isLogin ? "FIT ZONE" : "JOIN ZONE"}</Text>
-          <Text style={styles.subtitle}>
-            {isLogin ? "Welcome Back, Champion" : "Start Your Journey"}
-          </Text>
-        </View>
-
-        {/* Form Section */}
-        <View style={styles.formSection}>
-          {/* Email Input */}
-          <View style={styles.inputWrapper}>
-            <Text style={styles.inputLabel}>Email</Text>
-            <LinearGradient
-              colors={[colors.darkBg2, colors.darkBg3]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.inputContainer}
-            >
-              <Text style={styles.inputIcon}>✉️</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="your@email.com"
-                placeholderTextColor={colors.textMuted}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-            </LinearGradient>
-          </View>
-
-          {/* Password Input */}
-          <View style={styles.inputWrapper}>
-            <Text style={styles.inputLabel}>Password</Text>
-            <LinearGradient
-              colors={[colors.darkBg2, colors.darkBg3]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.inputContainer}
-            >
-              <Text style={styles.inputIcon}>🔐</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="••••••••"
-                placeholderTextColor={colors.textMuted}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-              />
-            </LinearGradient>
-          </View>
-
-          {/* Main Action Button */}
-          <Animated.View style={[styles.buttonWrapper, bounceTransform]}>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={handleAuthentication}
-              disabled={isLoading}
-            >
-              <LinearGradient
-                colors={[colors.neonCyan, colors.neonMagenta]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.button}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color={colors.textPrimary} size="large" />
-                ) : (
-                  <>
-                    <Text style={styles.buttonIcon}>
-                      {isLogin ? "⚡" : "🚀"}
-                    </Text>
-                    <Text style={styles.buttonText}>
-                      {isLogin ? "ENTER ZONE" : "CREATE ACCOUNT"}
-                    </Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </Animated.View>
-
-          {/* Divider */}
-          <View style={styles.dividerContainer}>
-            <View style={styles.divider} />
-            <Text style={styles.dividerText}>or</Text>
-            <View style={styles.divider} />
-          </View>
-
-          {/* Toggle Button */}
-          <TouchableOpacity
-            style={styles.toggleButton}
-            onPress={() => setIsLogin(!isLogin)}
-          >
-            <LinearGradient
-              colors={["transparent", "transparent"]}
-              style={styles.toggleGradient}
-            >
-              <Text style={styles.toggleText}>
-                {isLogin
-                  ? "🔥 Don't have account? Sign Up"
-                  : "⚡ Already have account? Login"}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Train. Track. Transform.</Text>
-        </View>
-      </Animated.View>
-    </LinearGradient>
+      <TouchableOpacity
+        style={styles.toggleButton}
+        onPress={() => setIsLogin(!isLogin)}
+      >
+        <Text style={styles.toggleText}>
+          {isLogin
+            ? "Don't have an account? Sign Up"
+            : "Already have an account? Login"}
+        </Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 

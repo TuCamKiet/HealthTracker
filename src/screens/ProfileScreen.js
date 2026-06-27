@@ -7,21 +7,16 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Animated,
+  ScrollView,
   Pressable,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { auth, db } from "../services/firebaseConfig";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { useDispatch } from "react-redux";
 import { setUserData } from "../redux/slices/healthSlice";
-import { LinearGradient } from "expo-linear-gradient";
-import { colors, gradients, shadows, spacing } from "../utils/theme";
-import {
-  usePulseAnimation,
-  useFadeInAnimation,
-  useSlideInAnimation,
-  useBounceAnimation,
-} from "../utils/animations";
 
 export default function ProfileScreen() {
   const dispatch = useDispatch();
@@ -33,10 +28,14 @@ export default function ProfileScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
 
-  // Lấy User ID của người dùng đang đăng nhập
   const userId = auth.currentUser?.uid;
 
-  // Tải dữ liệu từ Firestore khi mở màn hình
+  const { opacity: fadeOpacity } = useFadeInAnimation(200);
+  const { transform: slideTransform1 } = useSlideInAnimation(true, 300);
+  const { transform: slideTransform2 } = useSlideInAnimation(true, 400);
+  const { opacity: pulseOpacity } = usePulseAnimation(2500);
+  const { transform: bounceTransform, bounce } = useBounceAnimation();
+
   useEffect(() => {
     const fetchUserData = async () => {
       if (!userId) return;
@@ -61,8 +60,6 @@ export default function ProfileScreen() {
     fetchUserData();
   }, [userId]);
 
-  // Lưu dữ liệu lên Firestore
-  // Lưu dữ liệu lên Firestore
   const handleSaveProfile = async () => {
     if (!height || !weight || !age || !sex) {
       Alert.alert("Lỗi", "Vui lòng nhập đầy đủ thông tin");
@@ -70,8 +67,8 @@ export default function ProfileScreen() {
     }
 
     setIsLoading(true);
+    bounce();
     try {
-      // 1. Cập nhật Redux trước
       dispatch(
         setUserData({
           weight: parseFloat(weight),
@@ -81,7 +78,6 @@ export default function ProfileScreen() {
         }),
       );
 
-      // 2. Cập nhật lên Firebase
       const userRef = doc(db, "users", userId);
       await setDoc(
         userRef,
@@ -96,9 +92,7 @@ export default function ProfileScreen() {
       );
 
       setIsLoading(false);
-      Alert.alert("Thành công", "Đã cập nhật dữ liệu ✅ ");
-      // NGAY LẬP TỨC SAU DÒNG NÀY: onSnapshot ở App.js sẽ bắt được tín hiệu
-      // và tự động hất bạn văng thẳng vào Dashboard mà không cần dòng code chuyển trang nào!
+      Alert.alert("Thành công", "Đã cập nhật dữ liệu ✅");
     } catch (error) {
       Alert.alert("Lỗi", "Không thể lưu dữ liệu: " + error.message);
       setIsLoading(false);
@@ -111,154 +105,530 @@ export default function ProfileScreen() {
 
   if (isFetching) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#3B82F6" />
-      </View>
+      <LinearGradient
+        colors={[colors.darkBg, colors.darkBg2]}
+        style={styles.centerContainer}
+      >
+        <Animated.View
+          style={[
+            styles.loaderContainer,
+            {
+              transform: [
+                {
+                  scale: pulseOpacity.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.8, 1.1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={[colors.neonCyan, colors.neonPurple]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.loaderGradient}
+          >
+            <ActivityIndicator color={colors.textPrimary} size="large" />
+          </LinearGradient>
+        </Animated.View>
+      </LinearGradient>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.label}>Chiều cao (cm)</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Ví dụ: 170"
-        value={height}
-        onChangeText={setHeight}
-        keyboardType="numeric"
-      />
-
-      <Text style={styles.label}>Cân nặng (kg)</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Ví dụ: 65"
-        value={weight}
-        onChangeText={setWeight}
-        keyboardType="numeric"
-      />
-
-      <Text style={styles.label}>Tuổi</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Ví dụ: 20"
-        value={age}
-        onChangeText={setAge}
-        keyboardType="numeric"
-      />
-
-      <Text style={styles.label}>Giới tính</Text>
-      <SexRadio value={sex} onChange={setSex} />
-
-      <TouchableOpacity
-        style={styles.button}
-        onPress={handleSaveProfile}
-        disabled={isLoading}
+    <LinearGradient
+      colors={[colors.darkBg, colors.darkBg2, colors.darkBg]}
+      style={styles.container}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+    >
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
       >
-        {isLoading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Lưu thông tin</Text>
-        )}
-      </TouchableOpacity>
+        <Animated.View style={{ opacity: fadeOpacity }}>
+          {/* Header */}
+          <View style={styles.header}>
+            <Animated.View style={slideTransform1}>
+              <Text style={styles.headerTitle}>PROFILE</Text>
+              <Text style={styles.headerSubtitle}>
+                Build Your Fitness Profile
+              </Text>
+            </Animated.View>
+          </View>
 
-      <TouchableOpacity
-        style={[styles.button, styles.logoutButton]}
-        onPress={handleLogout}
-      >
-        <Text style={styles.logoutText}>Đăng xuất</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
+          {/* Info Card */}
+          <Animated.View style={slideTransform1}>
+            <LinearGradient
+              colors={[colors.darkBg2, colors.darkBg3]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.infoCard}
+            >
+              <View style={styles.infoBadge}>
+                <Text style={styles.infoBadgeText}>⚙️</Text>
+              </View>
+              <Text style={styles.infoTitle}>Personal Information</Text>
+              <Text style={styles.infoDescription}>
+                Enter your details to personalize your fitness journey
+              </Text>
+            </LinearGradient>
+          </Animated.View>
 
-function SexRadio({ value, onChange }) {
-  const selected = value; // "Nữ" or "Nam"
+          {/* Height Input */}
+          <Animated.View style={slideTransform1}>
+            <View style={styles.inputSection}>
+              <View style={styles.labelContainer}>
+                <Text style={styles.label}>📏 Height (cm)</Text>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{height || "0"} cm</Text>
+                </View>
+              </View>
+              <LinearGradient
+                colors={[colors.darkBg2, colors.darkBg3]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.inputContainer}
+              >
+                <TextInput
+                  style={styles.input}
+                  placeholder="170"
+                  placeholderTextColor={colors.textMuted}
+                  value={height}
+                  onChangeText={setHeight}
+                  keyboardType="numeric"
+                />
+              </LinearGradient>
+            </View>
+          </Animated.View>
 
-  return (
-    <View>
-      <Pressable style={styles.optionRow} onPress={() => onChange("female")}>
-        <View
-          style={[
-            styles.circle,
-            selected === "female" && styles.circleSelected,
-          ]}
-        >
-          {selected === "female" && <View style={styles.dot} />}
-        </View>
-        <Text style={styles.optionText}>Female</Text>
-      </Pressable>
+          {/* Weight Input */}
+          <Animated.View style={slideTransform2}>
+            <View style={styles.inputSection}>
+              <View style={styles.labelContainer}>
+                <Text style={styles.label}>⚖️ Weight (kg)</Text>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{weight || "0"} kg</Text>
+                </View>
+              </View>
+              <LinearGradient
+                colors={[colors.darkBg2, colors.darkBg3]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.inputContainer}
+              >
+                <TextInput
+                  style={styles.input}
+                  placeholder="65"
+                  placeholderTextColor={colors.textMuted}
+                  value={weight}
+                  onChangeText={setWeight}
+                  keyboardType="numeric"
+                />
+              </LinearGradient>
+            </View>
+          </Animated.View>
 
-      <Pressable style={styles.optionRow} onPress={() => onChange("male")}>
-        <View
-          style={[styles.circle, selected === "male" && styles.circleSelected]}
-        >
-          {selected === "male" && <View style={styles.dot} />}
-        </View>
-        <Text style={styles.optionText}>Male</Text>
-      </Pressable>
-    </View>
+          {/* Age Input */}
+          <Animated.View style={slideTransform2}>
+            <View style={styles.inputSection}>
+              <View style={styles.labelContainer}>
+                <Text style={styles.label}>🎂 Age (years)</Text>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{age || "0"} yrs</Text>
+                </View>
+              </View>
+              <LinearGradient
+                colors={[colors.darkBg2, colors.darkBg3]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.inputContainer}
+              >
+                <TextInput
+                  style={styles.input}
+                  placeholder="25"
+                  placeholderTextColor={colors.textMuted}
+                  value={age}
+                  onChangeText={setAge}
+                  keyboardType="numeric"
+                />
+              </LinearGradient>
+            </View>
+          </Animated.View>
+
+          {/* Gender Selection */}
+          <Animated.View style={slideTransform2}>
+            <View style={styles.inputSection}>
+              <Text style={styles.label}>👥 Gender</Text>
+              <View style={styles.genderContainer}>
+                <Pressable
+                  style={[
+                    styles.genderButton,
+                    sex === "male" && styles.genderButtonActive,
+                  ]}
+                  onPress={() => setSex("male")}
+                >
+                  <LinearGradient
+                    colors={
+                      sex === "male"
+                        ? [colors.neonBlue, colors.neonCyan]
+                        : [colors.darkBg3, colors.darkBg2]
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.genderButtonGradient}
+                  >
+                    <Text style={styles.genderIcon}>👨</Text>
+                    <Text style={styles.genderText}>Male</Text>
+                  </LinearGradient>
+                </Pressable>
+
+                <Pressable
+                  style={[
+                    styles.genderButton,
+                    sex === "female" && styles.genderButtonActive,
+                  ]}
+                  onPress={() => setSex("female")}
+                >
+                  <LinearGradient
+                    colors={
+                      sex === "female"
+                        ? [colors.neonMagenta, colors.neonPink]
+                        : [colors.darkBg3, colors.darkBg2]
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.genderButtonGradient}
+                  >
+                    <Text style={styles.genderIcon}>👩</Text>
+                    <Text style={styles.genderText}>Female</Text>
+                  </LinearGradient>
+                </Pressable>
+              </View>
+            </View>
+          </Animated.View>
+
+          {/* BMI Info */}
+          {height && weight && (
+            <Animated.View style={slideTransform2}>
+              <LinearGradient
+                colors={[colors.neonGreen + "20", colors.neonCyan + "10"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.bmiCard}
+              >
+                <View style={styles.bmiContent}>
+                  <Text style={styles.bmiLabel}>📊 BMI Index</Text>
+                  <Text style={styles.bmiValue}>
+                    {(parseFloat(weight) / ((parseFloat(height) / 100) ** 2)).toFixed(1)}
+                  </Text>
+                  <Text style={styles.bmiStatus}>
+                    {parseFloat(weight) / ((parseFloat(height) / 100) ** 2) < 18.5
+                      ? "Underweight"
+                      : parseFloat(weight) / ((parseFloat(height) / 100) ** 2) < 25
+                      ? "Normal"
+                      : "Overweight"}
+                  </Text>
+                </View>
+                <View style={styles.bmiIcon}>
+                  <Text style={styles.bmiIconText}>✨</Text>
+                </View>
+              </LinearGradient>
+            </Animated.View>
+          )}
+
+          {/* Save Button */}
+          <Animated.View style={bounceTransform}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handleSaveProfile}
+              disabled={isLoading}
+            >
+              <LinearGradient
+                colors={[colors.neonCyan, colors.neonPurple]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.button}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color={colors.textPrimary} size="large" />
+                ) : (
+                  <>
+                    <Text style={styles.buttonIcon}>💾</Text>
+                    <Text style={styles.buttonText}>Save Profile</Text>
+                  </>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* Logout Button */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={handleLogout}
+            style={styles.logoutButtonContainer}
+          >
+            <LinearGradient
+              colors={[colors.darkBg3, colors.darkBg2]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.logoutButton}
+            >
+              <Text style={styles.logoutIcon}>🚪</Text>
+              <Text style={styles.logoutText}>Logout</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </Animated.View>
+      </ScrollView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#F5F7FA" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  container: {
+    flex: 1,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  scrollContent: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
+  },
+  loaderContainer: {
+    width: 100,
+    height: 100,
+  },
+  loaderGradient: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 50,
+    justifyContent: "center",
+    alignItems: "center",
+    ...shadows.neonCyan,
+  },
+  header: {
+    marginBottom: spacing.xxl,
+    marginTop: spacing.lg,
+  },
+  headerTitle: {
+    fontSize: 36,
+    fontWeight: "900",
+    color: colors.neonCyan,
+    letterSpacing: 2,
+    textShadowColor: colors.neonCyan,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    fontWeight: "600",
+    letterSpacing: 1,
+  },
+  infoCard: {
+    borderRadius: 16,
+    padding: spacing.lg,
+    marginBottom: spacing.xxl,
+    borderWidth: 1,
+    borderColor: colors.neonMagenta,
+    borderOpacity: 0.2,
+    ...shadows.soft,
+  },
+  infoBadge: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: colors.darkBg,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: spacing.md,
+    borderWidth: 2,
+    borderColor: colors.neonPurple,
+  },
+  infoBadgeText: {
+    fontSize: 24,
+  },
+  infoTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  infoDescription: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  inputSection: {
+    marginBottom: spacing.xl,
+  },
+  labelContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.md,
+  },
   label: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#374151",
-    marginBottom: 5,
-    marginTop: 15,
+    fontSize: 14,
+    fontWeight: "800",
+    color: colors.neonCyan,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  badge: {
+    backgroundColor: colors.darkBg3,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.neonCyan,
+    borderOpacity: 0.3,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.neonCyan,
+  },
+  inputContainer: {
+    borderRadius: 12,
+    paddingHorizontal: spacing.lg,
+    borderWidth: 1.5,
+    borderColor: colors.neonCyan,
+    borderOpacity: 0.3,
+    height: 54,
+    justifyContent: "center",
+    ...shadows.soft,
   },
   input: {
-    backgroundColor: "#FFFFFF",
-    padding: 15,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
+    color: colors.textPrimary,
     fontSize: 16,
+    fontWeight: "600",
   },
-  button: {
-    backgroundColor: "#3B82F6",
-    padding: 15,
-    borderRadius: 10,
-    alignItems: "center",
-    marginTop: 30,
-  },
-  buttonText: { color: "#FFFFFF", fontWeight: "bold", fontSize: 16 },
-  logoutButton: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "#EF4444",
-    marginTop: 15,
-  },
-  logoutText: { color: "#EF4444", fontWeight: "bold", fontSize: 16 },
-  //Custion radio button
-  optionRow: {
+  genderContainer: {
     flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 6,
+    gap: spacing.md,
   },
-  circle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: "#666",
+  genderButton: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  genderButtonActive: {
+    ...shadows.neonCyan,
+  },
+  genderButtonGradient: {
+    paddingVertical: spacing.lg,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
+    borderWidth: 2,
+    borderColor: "transparent",
   },
-  circleSelected: {
-    borderColor: "#1e90ff",
+  genderIcon: {
+    fontSize: 28,
+    marginBottom: spacing.sm,
   },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#1e90ff",
+  genderText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.textPrimary,
+    letterSpacing: 0.5,
   },
-  optionText: {
-    fontSize: 15,
+  bmiCard: {
+    borderRadius: 16,
+    padding: spacing.lg,
+    marginBottom: spacing.xxl,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.neonGreen,
+    borderOpacity: 0.3,
+    ...shadows.soft,
+  },
+  bmiContent: {
+    flex: 1,
+  },
+  bmiLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: "600",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: spacing.sm,
+  },
+  bmiValue: {
+    fontSize: 32,
+    fontWeight: "900",
+    color: colors.neonGreen,
+    marginBottom: spacing.sm,
+    textShadowColor: colors.neonGreen,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
+  bmiStatus: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: "600",
+  },
+  bmiIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.darkBg,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: colors.neonGreen,
+  },
+  bmiIconText: {
+    fontSize: 28,
+  },
+  button: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacing.lg,
+    borderRadius: 14,
+    marginBottom: spacing.lg,
+    ...shadows.neonCyan,
+  },
+  buttonIcon: {
+    fontSize: 22,
+    marginRight: spacing.md,
+  },
+  buttonText: {
+    color: colors.textPrimary,
+    fontWeight: "800",
+    fontSize: 16,
+    letterSpacing: 1.5,
+  },
+  logoutButtonContainer: {
+    marginBottom: spacing.xl,
+  },
+  logoutButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacing.lg,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: colors.neonMagenta,
+    borderOpacity: 0.4,
+  },
+  logoutIcon: {
+    fontSize: 20,
+    marginRight: spacing.md,
+  },
+  logoutText: {
+    color: colors.neonMagenta,
+    fontWeight: "800",
+    fontSize: 16,
+    letterSpacing: 1,
   },
 });
