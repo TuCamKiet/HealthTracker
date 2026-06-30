@@ -1,53 +1,58 @@
 import React, { useState, useEffect } from "react";
 import { ActivityIndicator, View, TouchableOpacity, Text } from "react-native";
-import { NavigationContainer, DarkTheme } from "@react-navigation/native";
+import {
+  NavigationContainer,
+  DefaultTheme,
+  DarkTheme,
+} from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import Ionicons from "@react-native-vector-icons/ionicons";
 
 // Redux imports
-import { Provider } from "react-redux";
+import { Provider, useDispatch } from "react-redux";
 import { store } from "./src/redux/store";
+import { setUserData } from "./src/redux/slices/healthSlice";
+
+// Theme
+import { ThemeProvider, useTheme } from "./src/context/ThemeContext";
 
 // Firebase imports
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "./src/services/firebaseConfig";
-// THAY ĐỔI: Dùng onSnapshot thay cho getDoc
 import { doc, onSnapshot } from "firebase/firestore";
 
-// Import Screens
+// Screens
 import DashboardScreen from "./src/screens/DashboardScreen";
 import LoginScreen from "./src/screens/LoginScreen";
 import HistoryScreen from "./src/screens/HistoryScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
-
-import { colors, shadows } from "./src/utils/theme";
+import HealthMonitor from "./src/components/HealthMonitor";
 
 const Stack = createNativeStackNavigator();
 
-export default function App() {
+function AppNavigator() {
+  const { theme, isDark } = useTheme();
+  const dispatch = useDispatch();
+
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
   const [hasProfile, setHasProfile] = useState(false);
 
-  //Style
-  const MyTheme = {
-    ...DarkTheme,
-
+  const NavTheme = {
+    ...(isDark ? DarkTheme : DefaultTheme),
     colors: {
-      ...DarkTheme.colors,
-
-      primary: colors.neonCyan,
-      background: colors.darkBg,
-      card: colors.darkBg2,
-      text: colors.textPrimary,
-      border: colors.darkBg3,
-      notification: colors.neonMagenta,
+      ...(isDark ? DarkTheme.colors : DefaultTheme.colors),
+      primary: theme.primary,
+      background: theme.bg,
+      card: theme.bg2,
+      text: theme.textPrimary,
+      border: theme.border,
+      notification: theme.secondary,
     },
   };
 
-  // Lắng nghe trạng thái đăng nhập từ Firebase
   useEffect(() => {
-    let unsubProfile; // Biến dọn dẹp listener của Firestore
+    let unsubProfile;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -55,7 +60,6 @@ export default function App() {
       if (currentUser) {
         const userRef = doc(db, "users", currentUser.uid);
 
-        // THAY ĐỔI: Lắng nghe Real-time từ Firestore
         unsubProfile = onSnapshot(
           userRef,
           (userSnap) => {
@@ -64,22 +68,30 @@ export default function App() {
               userSnap.data().height &&
               userSnap.data().weight
             ) {
+              const data = userSnap.data();
+              dispatch(
+                setUserData({
+                  height: data.height,
+                  weight: data.weight,
+                  age: data.age,
+                  sex: data.sex,
+                }),
+              );
               setHasProfile(true);
             } else {
               setHasProfile(false);
             }
-
             if (initializing) setInitializing(false);
           },
           (error) => {
-            console.log("Lỗi kiểm tra profile:", error);
+            console.log("Profile check error:", error);
             setHasProfile(false);
             if (initializing) setInitializing(false);
           },
         );
       } else {
         setHasProfile(false);
-        if (unsubProfile) unsubProfile(); // Tắt lắng nghe nếu đăng xuất
+        if (unsubProfile) unsubProfile();
         if (initializing) setInitializing(false);
       }
     });
@@ -88,9 +100,8 @@ export default function App() {
       unsubscribeAuth();
       if (unsubProfile) unsubProfile();
     };
-  }, [initializing]);
+  }, [initializing, dispatch]);
 
-  // Hiển thị màn hình chờ
   if (initializing) {
     return (
       <View
@@ -98,157 +109,124 @@ export default function App() {
           flex: 1,
           justifyContent: "center",
           alignItems: "center",
-          backgroundColor: colors.darkBg,
+          backgroundColor: theme.bg,
         }}
       >
-        <ActivityIndicator size="large" color={colors.neonCyan} />
-
+        <ActivityIndicator size="large" color={theme.primary} />
         <Text
           style={{
-            marginTop: 20,
-            color: colors.textSecondary,
-            letterSpacing: 2,
-            fontWeight: "700",
+            marginTop: 16,
+            color: theme.textSecondary,
+            letterSpacing: 0.5,
+            fontWeight: "600",
+            fontSize: 13,
           }}
         >
-          INITIALIZING...
+          Loading...
         </Text>
       </View>
     );
   }
 
   return (
-    <Provider store={store}>
-      <NavigationContainer theme={MyTheme}>
-        <Stack.Navigator
-          screenOptions={{
-            animation: "slide_from_right",
-
-            headerStyle: {
-              backgroundColor: colors.darkBg2,
-            },
-
-            headerTintColor: colors.textPrimary,
-
-            headerTitleStyle: {
-              fontWeight: "900",
-              fontSize: 18,
-              letterSpacing: 1,
-            },
-
-            headerShadowVisible: false,
-
-            contentStyle: {
-              backgroundColor: colors.darkBg,
-            },
-          }}
-        >
-          {user ? (
-            hasProfile ? (
-              // LUỒNG 1: Đã đăng nhập VÀ Đã có thông tin hồ sơ
-              <>
-                <Stack.Screen
-                  name="Dashboard"
-                  component={DashboardScreen}
-                  options={({ navigation }) => ({
-                    title: "FIT ZONE",
-                    headerTitleAlign: "center", // Locks the title in the center
-
-                    headerStyle: {
-                      backgroundColor: colors.darkBg2,
-                    },
-
-                    headerTintColor: colors.neonCyan,
-
-                    headerTitleStyle: {
-                      fontWeight: "900",
-                      letterSpacing: 2,
-                    },
-
-                    headerShadowVisible: false,
-
-                    // History Icon on the Left
-                    headerLeft: () => (
-                      <TouchableOpacity
-                        style={{
-                          marginLeft: 16,
-                          padding: 8,
-                          borderRadius: 20,
-                          borderWidth: 1,
-                          borderColor: colors.neonCyan,
-                          backgroundColor: "rgba(0,217,255,0.12)",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          ...shadows.soft,
-                        }}
-                        onPress={() => navigation.navigate("History")}
-                      >
-                        <Ionicons
-                          name="time-outline"
-                          size={15}
-                          color={colors.neonCyan}
-                        />
-                      </TouchableOpacity>
-                    ),
-
-                    // Profile Icon on the Right
-                    headerRight: () => (
-                      <TouchableOpacity
-                        style={{
-                          marginRight: 16,
-                          padding: 8,
-                          borderRadius: 20,
-                          borderWidth: 1,
-                          borderColor: colors.neonPurple,
-                          backgroundColor: "rgba(139,92,246,0.12)",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          ...shadows.soft,
-                        }}
-                        onPress={() => navigation.navigate("Profile")}
-                      >
-                        <Ionicons
-                          name="person-outline"
-                          size={15}
-                          color={colors.neonPurple}
-                        />
-                      </TouchableOpacity>
-                    ),
-                  })}
-                />
-                <Stack.Screen
-                  name="Profile"
-                  component={ProfileScreen}
-                  options={{
-                    title: "PROFILE",
-                  }}
-                />
-                <Stack.Screen
-                  name="History"
-                  component={HistoryScreen}
-                  options={{
-                    title: "ACTIVITY HISTORY",
-                  }}
-                />
-              </>
-            ) : (
-              // LUỒNG 2: Đã đăng nhập NHƯNG CHƯA có hồ sơ -> Ép buộc thiết lập
+    <NavigationContainer theme={NavTheme}>
+      {/* The brain runs globally here */}
+      {user && <HealthMonitor />}
+      <Stack.Navigator
+        screenOptions={{
+          animation: "slide_from_right",
+          headerStyle: { backgroundColor: theme.bg2 },
+          headerTintColor: theme.textPrimary,
+          headerTitleStyle: { fontWeight: "800", fontSize: 17 },
+          headerShadowVisible: false,
+          contentStyle: { backgroundColor: theme.bg },
+        }}
+      >
+        {user ? (
+          hasProfile ? (
+            <>
               <Stack.Screen
-                name="ProfileSetup"
-                component={ProfileScreen}
-                options={{ title: "SETUP PROFILE" }}
+                name="Dashboard"
+                component={DashboardScreen}
+                options={({ navigation }) => ({
+                  title: "FitTrack",
+                  headerTitleAlign: "center",
+                  headerLeft: () => (
+                    <TouchableOpacity
+                      style={{
+                        marginLeft: 12,
+                        padding: 8,
+                        borderRadius: 18,
+                        backgroundColor: theme.primary + "1A",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                      onPress={() => navigation.navigate("History")}
+                    >
+                      <Ionicons
+                        name="time-outline"
+                        size={17}
+                        color={theme.primary}
+                      />
+                    </TouchableOpacity>
+                  ),
+                  headerRight: () => (
+                    <TouchableOpacity
+                      style={{
+                        marginRight: 12,
+                        padding: 8,
+                        borderRadius: 18,
+                        backgroundColor: theme.secondary + "1A",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                      onPress={() => navigation.navigate("Profile")}
+                    >
+                      <Ionicons
+                        name="person-outline"
+                        size={17}
+                        color={theme.secondary}
+                      />
+                    </TouchableOpacity>
+                  ),
+                })}
               />
-            )
+              <Stack.Screen
+                name="Profile"
+                component={ProfileScreen}
+                options={{ title: "Profile" }}
+              />
+              <Stack.Screen
+                name="History"
+                component={HistoryScreen}
+                options={{ title: "Activity History" }}
+              />
+            </>
           ) : (
-            // LUỒNG 3: Chưa đăng nhập -> Hiển thị Login
             <Stack.Screen
-              name="Login"
-              component={LoginScreen}
-              options={{ headerShown: false }}
+              name="ProfileSetup"
+              component={ProfileScreen}
+              options={{ title: "Setup Profile" }}
             />
-          )}
-        </Stack.Navigator>
-      </NavigationContainer>
+          )
+        ) : (
+          <Stack.Screen
+            name="Login"
+            component={LoginScreen}
+            options={{ headerShown: false }}
+          />
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}
+
+export default function App() {
+  return (
+    <Provider store={store}>
+      <ThemeProvider>
+        <AppNavigator />
+      </ThemeProvider>
     </Provider>
   );
 }

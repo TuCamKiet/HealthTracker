@@ -10,29 +10,26 @@ import {
   Animated,
 } from "react-native";
 import { BarChart } from "react-native-chart-kit";
-import { LinearGradient } from "expo-linear-gradient";
-
-// Import Firebase
 import { auth, db } from "../services/firebaseConfig";
-import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
-import { colors, spacing, shadows } from "../utils/theme";
 import {
-  usePulseAnimation,
-  useFadeInAnimation,
-  useSlideInAnimation,
-} from "../utils/animations";
+  collection,
+  query,
+  orderBy,
+  limit,
+  getDocs,
+  where,
+} from "firebase/firestore";
+import { useTheme } from "../context/ThemeContext";
+import { useFadeInAnimation, useSlideInAnimation } from "../utils/animations";
 
 export default function HistoryScreen() {
+  const { theme, spacing, softShadow } = useTheme();
   const [chartData, setChartData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-
-  // State quản lý bộ lọc thời gian: 'week', 'month', 'year'
   const [timeRange, setTimeRange] = useState("week");
 
-  //style
-  const { opacity: fadeOpacity } = useFadeInAnimation(200);
-  const { transform: slideTransform } = useSlideInAnimation(true, 300);
-  const { opacity: pulseOpacity } = usePulseAnimation(2500);
+  const { opacity: fadeOpacity } = useFadeInAnimation(150);
+  const { transform: slideTransform } = useSlideInAnimation(true, 200);
 
   useEffect(() => {
     const fetchHistoryData = async () => {
@@ -41,74 +38,91 @@ export default function HistoryScreen() {
       if (!userId) return;
 
       try {
-        // 1. Xác định số lượng document cần tải dựa trên timeRange
         let limitDays = 7;
         if (timeRange === "month") limitDays = 30;
         if (timeRange === "year") limitDays = 365;
 
+        const today = new Date();
+        const currentDay = today.getDay();
+        const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+        const monday = new Date(today);
+        monday.setDate(today.getDate() + diffToMonday);
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+        const start = monday.toISOString().split("T")[0];
+        const end = sunday.toISOString().split("T")[0];
+
         const historyRef = collection(db, "users", userId, "history");
-        const q = query(historyRef, orderBy("date", "desc"), limit(limitDays));
+        const q = query(
+          historyRef,
+          where("date", ">=", start),
+          where("date", "<=", end),
+          orderBy("date"),
+        );
         const querySnapshot = await getDocs(q);
 
-        // Đưa dữ liệu thô vào mảng
         let rawData = [];
-        querySnapshot.forEach((doc) => {
-          rawData.push(doc.data());
-        });
-
-        // Đảo ngược mảng để dữ liệu sắp xếp từ Cũ -> Mới
+        querySnapshot.forEach((doc) => rawData.push(doc.data()));
         rawData.reverse();
 
         let fetchedLabels = [];
         let fetchedSteps = [];
 
-        // 2. Xử lý và gom nhóm dữ liệu (Aggregation)
         if (rawData.length === 0) {
-          fetchedLabels = ["Chưa có dữ liệu"];
+          fetchedLabels = ["No data"];
           fetchedSteps = [0];
         } else if (timeRange === "week") {
-          // TUẦN: Hiển thị 7 ngày gần nhất
-          rawData.forEach((data) => {
-            const dateParts = data.date.split("-");
-            fetchedLabels.push(`${dateParts[2]}/${dateParts[1]}`);
-            fetchedSteps.push(data.steps);
-          });
-        } else if (timeRange === "month") {
-          // THÁNG: Gom 30 ngày thành 4 nhóm (4 Tuần)
-          const weeks = [0, 0, 0, 0];
-          const chunkSize = Math.ceil(rawData.length / 4); // Chia đều dữ liệu thành 4 phần
+          // Create lookup table
+          const stepMap = {};
 
+          rawData.forEach((data) => {
+            stepMap[data.date] = data.steps;
+          });
+
+          fetchedLabels = [];
+          fetchedSteps = [];
+
+          for (let i = 0; i < 7; i++) {
+            const date = new Date(monday);
+            date.setDate(monday.getDate() + i);
+
+            const yyyy = date.getFullYear();
+            const mm = String(date.getMonth() + 1).padStart(2, "0");
+            const dd = String(date.getDate()).padStart(2, "0");
+
+            const key = `${yyyy}-${mm}-${dd}`;
+
+            fetchedLabels.push(`${dd}/${mm}`);
+            fetchedSteps.push(stepMap[key] ?? 0);
+          }
+        } else if (timeRange === "month") {
+          const weeks = [0, 0, 0, 0];
+          const chunkSize = Math.ceil(rawData.length / 4);
           rawData.forEach((data, index) => {
             const weekIndex = Math.floor(index / chunkSize);
-            if (weekIndex < 4) {
-              weeks[weekIndex] += data.steps;
-            }
+            if (weekIndex < 4) weeks[weekIndex] += data.steps;
           });
-          fetchedLabels = ["Tuần 1", "Tuần 2", "Tuần 3", "Tuần 4"];
+          fetchedLabels = ["Wk 1", "Wk 2", "Wk 3", "Wk 4"];
           fetchedSteps = weeks;
         } else if (timeRange === "year") {
-          // NĂM: Gom 365 ngày thành 12 Tháng
           const monthlyData = Array(12).fill(0);
-
           rawData.forEach((data) => {
-            // Lấy tháng từ chuỗi YYYY-MM-DD (trừ 1 vì mảng bắt đầu từ 0)
             const monthIndex = parseInt(data.date.split("-")[1], 10) - 1;
             monthlyData[monthIndex] += data.steps;
           });
-
           fetchedLabels = [
-            "T1",
-            "T2",
-            "T3",
-            "T4",
-            "T5",
-            "T6",
-            "T7",
-            "T8",
-            "T9",
-            "T10",
-            "T11",
-            "T12",
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr",
+            "May",
+            "Jun",
+            "Jul",
+            "Aug",
+            "Sep",
+            "Oct",
+            "Nov",
+            "Dec",
           ];
           fetchedSteps = monthlyData;
         }
@@ -118,41 +132,44 @@ export default function HistoryScreen() {
           datasets: [{ data: fetchedSteps }],
         });
       } catch (error) {
-        console.log("Lỗi tải lịch sử:", error);
+        console.log("History load error:", error);
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchHistoryData();
-  }, [timeRange]); // Gọi lại API và tính toán mỗi khi timeRange thay đổi
+  }, [timeRange]);
+
+  const styles = makeStyles(theme, spacing, softShadow);
+
+  const chartColor = (opacity = 1) =>
+    theme.mode === "dark"
+      ? `rgba(19, 212, 155, ${opacity})`
+      : `rgba(15, 185, 136, ${opacity})`;
+
+  const labelColor = (opacity = 1) =>
+    theme.mode === "dark"
+      ? `rgba(154, 164, 178, ${opacity})`
+      : `rgba(91, 100, 114, ${opacity})`;
 
   return (
-    <LinearGradient
-      colors={[colors.darkBg, colors.darkBg2, colors.darkBg]}
-      style={styles.container}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-    >
+    <View style={styles.container}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
         <Animated.View style={{ opacity: fadeOpacity }}>
-          {/* Header */}
           <Animated.View style={slideTransform}>
-            <View style={styles.header}>
-              <Text style={styles.headerTitle}>HISTORY</Text>
-              <Text style={styles.headerSubtitle}>
-                Track Your Progress Over Time
-              </Text>
-            </View>
+            <Text style={styles.headerTitle}>History</Text>
+            <Text style={styles.headerSubtitle}>
+              Track your progress over time
+            </Text>
           </Animated.View>
 
-          {/* Time Filter Buttons */}
           <Animated.View style={slideTransform}>
             <View style={styles.filterContainer}>
-              {["week", "month", "year"].map((range, index) => (
+              {["week", "month", "year"].map((range) => (
                 <TouchableOpacity
                   key={range}
                   style={[
@@ -160,64 +177,41 @@ export default function HistoryScreen() {
                     timeRange === range && styles.filterBtnActive,
                   ]}
                   onPress={() => setTimeRange(range)}
+                  activeOpacity={0.8}
                 >
-                  <LinearGradient
-                    colors={
-                      timeRange === range
-                        ? [colors.neonCyan, colors.neonPurple]
-                        : [colors.darkBg3, colors.darkBg2]
-                    }
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.filterBtnGradient}
+                  <Text
+                    style={[
+                      styles.filterText,
+                      timeRange === range && styles.filterTextActive,
+                    ]}
                   >
-                    <Text
-                      style={[
-                        styles.filterText,
-                        timeRange === range && styles.filterTextActive,
-                      ]}
-                    >
-                      {range === "week"
-                        ? "7 Ngày"
-                        : range === "month"
-                          ? "30 Ngày"
-                          : "Năm"}
-                    </Text>
-                  </LinearGradient>
+                    {range === "week"
+                      ? "7 Days"
+                      : range === "month"
+                        ? "Month"
+                        : "Year"}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
           </Animated.View>
 
-          {/* Chart Section */}
           <Animated.View style={slideTransform}>
             {isLoading || !chartData ? (
-              <LinearGradient
-                colors={[colors.darkBg2, colors.darkBg3]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.loadingCard}
-              >
-                <Animated.View
-                  style={{
-                    opacity: pulseOpacity,
-                  }}
-                >
-                  <ActivityIndicator color={colors.neonCyan} size="large" />
-                </Animated.View>
+              <View style={styles.loadingCard}>
+                <ActivityIndicator color={theme.primary} size="large" />
                 <Text style={styles.loadingText}>Loading your history...</Text>
-              </LinearGradient>
+              </View>
             ) : (
-              <LinearGradient
-                colors={[colors.darkBg2, colors.darkBg3]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.chartCard}
-              >
+              <View style={styles.chartCard}>
                 <BarChart
                   data={chartData}
-                  width={Dimensions.get("window").width - spacing.lg * 2 - 8}
-                  height={300}
+                  width={
+                    Dimensions.get("window").width -
+                    spacing.lg * 2 -
+                    spacing.lg * 2
+                  }
+                  height={280}
                   yAxisLabel=""
                   yAxisSuffix=""
                   fromZero={true}
@@ -226,44 +220,35 @@ export default function HistoryScreen() {
                     backgroundGradientFrom: "transparent",
                     backgroundGradientTo: "transparent",
                     decimalPlaces: 0,
-                    color: (opacity = 1) => `rgba(0, 217, 255, ${opacity})`,
-                    labelColor: (opacity = 1) =>
-                      `rgba(176, 184, 212, ${opacity})`,
-                    style: {
-                      borderRadius: 16,
-                    },
+                    color: chartColor,
+                    labelColor: labelColor,
+                    style: { borderRadius: 16 },
                     barPercentage: timeRange === "year" ? 0.3 : 0.7,
                     propsForBackgroundLines: {
-                      stroke: colors.darkBg3,
+                      stroke: theme.border,
                       strokeWidth: 1,
-                      opacity: 0.3,
+                      opacity: theme.mode === "dark" ? 0.4 : 0.6,
                     },
                   }}
-                  style={{ marginVertical: spacing.lg, borderRadius: 16 }}
+                  style={{ marginVertical: spacing.sm, borderRadius: 16 }}
                 />
-              </LinearGradient>
+              </View>
             )}
           </Animated.View>
 
-          {/* Stats Summary */}
           {chartData && !isLoading && (
             <Animated.View style={slideTransform}>
-              <LinearGradient
-                colors={[colors.darkBg2, colors.darkBg3]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.summaryCard}
-              >
+              <View style={styles.summaryCard}>
                 <View style={styles.summaryRow}>
                   <View style={styles.summaryItem}>
-                    <Text style={styles.summaryLabel}>📊 Total Steps</Text>
+                    <Text style={styles.summaryLabel}>Total Steps</Text>
                     <Text style={styles.summaryValue}>
                       {chartData.datasets[0].data.reduce((a, b) => a + b, 0)}
                     </Text>
                   </View>
                   <View style={styles.divider} />
                   <View style={styles.summaryItem}>
-                    <Text style={styles.summaryLabel}>📈 Average</Text>
+                    <Text style={styles.summaryLabel}>Average</Text>
                     <Text style={styles.summaryValue}>
                       {Math.round(
                         chartData.datasets[0].data.reduce((a, b) => a + b, 0) /
@@ -275,137 +260,109 @@ export default function HistoryScreen() {
                     </Text>
                   </View>
                 </View>
-              </LinearGradient>
+              </View>
             </Animated.View>
           )}
         </Animated.View>
       </ScrollView>
-    </LinearGradient>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
-  },
-  header: {
-    marginBottom: spacing.xxl,
-  },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: "900",
-    color: colors.neonCyan,
-    letterSpacing: 2,
-    textShadowColor: colors.neonCyan,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginTop: spacing.md,
-    fontWeight: "600",
-    letterSpacing: 0.5,
-  },
-  filterContainer: {
-    flexDirection: "row",
-    gap: spacing.md,
-    marginBottom: spacing.xl,
-  },
-  filterBtn: {
-    flex: 1,
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  filterBtnActive: {
-    ...shadows.neonCyan,
-  },
-  filterBtnGradient: {
-    paddingVertical: spacing.md,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.neonCyan,
-    borderOpacity: 0.3,
-  },
-  filterText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-  filterTextActive: {
-    color: colors.textPrimary,
-    fontWeight: "800",
-  },
-  loadingCard: {
-    borderRadius: 16,
-    padding: spacing.xxl,
-    alignItems: "center",
-    justifyContent: "center",
-    height: 300,
-    borderWidth: 1,
-    borderColor: colors.neonCyan,
-    borderOpacity: 0.2,
-    marginBottom: spacing.xl,
-  },
-  loadingText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: spacing.lg,
-    fontWeight: "600",
-    letterSpacing: 0.5,
-  },
-  chartCard: {
-    borderRadius: 16,
-    padding: spacing.lg,
-    marginBottom: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.neonCyan,
-    borderOpacity: 0.2,
-    ...shadows.soft,
-  },
-  summaryCard: {
-    borderRadius: 16,
-    padding: spacing.lg,
-    marginBottom: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.neonMagenta,
-    borderOpacity: 0.2,
-    ...shadows.soft,
-  },
-  summaryRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  summaryItem: {
-    flex: 1,
-    alignItems: "center",
-  },
-  divider: {
-    width: 1,
-    height: 50,
-    backgroundColor: colors.neonMagenta,
-    opacity: 0.2,
-  },
-  summaryLabel: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    marginBottom: spacing.sm,
-  },
-  summaryValue: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: colors.neonMagenta,
-    textShadowColor: colors.neonMagenta,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
-  },
-});
+const makeStyles = (theme, spacing, softShadow) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: theme.bg },
+    scrollContent: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.xxl,
+    },
+    headerTitle: {
+      fontSize: 24,
+      fontWeight: "800",
+      color: theme.textPrimary,
+    },
+    headerSubtitle: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      marginTop: spacing.xs,
+      marginBottom: spacing.xl,
+      fontWeight: "500",
+    },
+    filterContainer: {
+      flexDirection: "row",
+      gap: spacing.sm,
+      marginBottom: spacing.lg,
+      backgroundColor: theme.bg3,
+      borderRadius: 12,
+      padding: 4,
+    },
+    filterBtn: {
+      flex: 1,
+      paddingVertical: spacing.sm,
+      alignItems: "center",
+      borderRadius: 9,
+    },
+    filterBtnActive: {
+      backgroundColor: theme.card,
+      ...softShadow(),
+    },
+    filterText: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      fontWeight: "700",
+    },
+    filterTextActive: {
+      color: theme.primary,
+    },
+    loadingCard: {
+      borderRadius: 16,
+      padding: spacing.xxl,
+      alignItems: "center",
+      justifyContent: "center",
+      height: 280,
+      backgroundColor: theme.card,
+      borderWidth: 1,
+      borderColor: theme.border,
+      marginBottom: spacing.lg,
+    },
+    loadingText: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      marginTop: spacing.lg,
+      fontWeight: "600",
+    },
+    chartCard: {
+      borderRadius: 16,
+      padding: spacing.lg,
+      marginBottom: spacing.lg,
+      backgroundColor: theme.card,
+      borderWidth: 1,
+      borderColor: theme.border,
+      ...softShadow(),
+    },
+    summaryCard: {
+      borderRadius: 16,
+      padding: spacing.lg,
+      marginBottom: spacing.xl,
+      backgroundColor: theme.card,
+      borderWidth: 1,
+      borderColor: theme.border,
+      ...softShadow(),
+    },
+    summaryRow: { flexDirection: "row", alignItems: "center" },
+    summaryItem: { flex: 1, alignItems: "center" },
+    divider: { width: 1, height: 44, backgroundColor: theme.divider },
+    summaryLabel: {
+      fontSize: 11,
+      color: theme.textSecondary,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      marginBottom: spacing.sm,
+    },
+    summaryValue: {
+      fontSize: 22,
+      fontWeight: "900",
+      color: theme.primary,
+    },
+  });

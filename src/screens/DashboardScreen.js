@@ -4,159 +4,81 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
-  TouchableOpacity,
   ScrollView,
   Animated,
+  Alert,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { colors, spacing, shadows } from "../utils/theme";
-import {
-  usePulseAnimation,
-  useFadeInAnimation,
-  useSlideInAnimation,
-  useScalePulseAnimation,
-} from "../utils/animations";
-import { Pedometer } from "expo-sensors";
+import Ionicons from "@react-native-vector-icons/ionicons";
 import { useDispatch, useSelector } from "react-redux";
 import { auth, db } from "../services/firebaseConfig";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import {
-  updateActivity,
-  resetDailyStats,
-  addLiveActivity,
-} from "../redux/slices/healthSlice";
+import { doc, getDoc } from "firebase/firestore";
+import { updateActivity, resetDailyStats } from "../redux/slices/healthSlice";
 import * as Notifications from "expo-notifications";
 import { requestPermissionsAndSchedule } from "../services/notificationService";
-import { Alert } from "react-native";
+import { Pedometer } from "expo-sensors";
+import { useTheme } from "../context/ThemeContext";
+import { useFadeInAnimation, useSlideInAnimation } from "../utils/animations";
 import {
   calculateDistance,
   calculateSpeed,
   calculateMET,
-  calculateCalories,
 } from "../utils/HealthCalculator";
+
+// Evidence-based age-banded step goal
+function getStepGoal(age) {
+  if (!age || age < 60) return 9000;
+  return 7000;
+}
 
 export default function DashboardScreen() {
   const dispatch = useDispatch();
+  const { theme, spacing, softShadow } = useTheme();
 
-  //! Pull stats from Redux (added weight for precise calorie calculation)
   const {
     dailySteps,
     caloriesBurned,
     distanceMeters,
     walkingSeconds,
     strideLength,
-    weight,
+    age,
   } = useSelector((state) => state.health);
 
   const [isPedometerAvailable, setIsPedometerAvailable] = useState("checking");
-  const [hasNotified2k, setHasNotified2k] = useState(false);
-  const [hasNotified5k, setHasNotified5k] = useState(false);
-
-  //! Live Speedometer State & Refs
   const [instantSpeed, setInstantSpeed] = useState(0);
-  const sittingTimer = useRef(null);
 
-  //! Dynamic Live MET Calculation for UI
+  const uiSittingTimer = useRef(null);
+
+  const DAILY_GOAL = getStepGoal(age);
   const liveMet = instantSpeed === 0 ? 1.0 : calculateMET(instantSpeed);
+  const progressPct = Math.min(dailySteps / DAILY_GOAL, 1);
 
-  //! for animation
-  const { opacity: fadeOpacity } = useFadeInAnimation(200);
-  const { transform: slideTransform } = useSlideInAnimation(true, 300);
-  const { opacity: pulseOpacity } = usePulseAnimation(2500);
-  const scaleAnimation = useScalePulseAnimation(0.95, 1.1, 2000);
+  const { opacity: fadeOpacity } = useFadeInAnimation(150);
+  const { transform: slideTransform } = useSlideInAnimation(true, 200);
 
-  //! Notification
+  // 1. Notification Responders
   useEffect(() => {
     requestPermissionsAndSchedule();
-
-    const receivedListener = Notifications.addNotificationReceivedListener(
-      (notification) => {
-        console.log("RECEIVED:", notification);
-      },
-    );
 
     const responseListener =
       Notifications.addNotificationResponseReceivedListener((response) => {
         const data = response.notification.request.content.data;
-        console.log("CLICKED:", data);
-
-        if (data.type === "WATER_REMINDER") {
-          Alert.alert("💧 Uống nước", "Bạn đã uống nước chưa?");
+        if (data.type === "WATER_ACTIVITY_REMINDER") {
+          Alert.alert("Hydration check", "Have you had some water?");
         }
         if (data.type === "MOVE_REMINDER") {
-          Alert.alert("🏃‍♂️ Vận động", "Đi bộ vài bước nhé!");
+          Alert.alert("Time to move", "Take a quick walk!");
         }
       });
 
     return () => {
-      receivedListener.remove();
       responseListener.remove();
     };
   }, []);
 
-  //! Load profile data from Firestore
+  // 2. Smart Initializer: Fetches Firebase & Device steps, keeps the highest.
   useEffect(() => {
-    const loadCurrentSteps = async () => {
-      const userId = auth.currentUser?.uid;
-      if (!userId) return;
-
-      const today = new Date().toISOString().split("T")[0];
-
-      try {
-        const currentRef = doc(db, "users", userId, "history", today);
-        const currentSnap = await getDoc(currentRef);
-
-        if (!currentSnap.exists()) return;
-
-        const data = currentSnap.data();
-
-        if (data.date !== today) {
-          dispatch(resetDailyStats());
-          return;
-        }
-
-        const steps = data.steps || 0;
-        const storedWalkingSeconds = data.walkingSeconds || (steps / 100) * 60;
-
-        dispatch(
-          updateActivity({ steps, walkingSeconds: storedWalkingSeconds }),
-        );
-      } catch (error) {
-        console.log("Load current steps error:", error);
-      }
-    };
-
-    loadCurrentSteps();
-  }, [dispatch]);
-
-  //! Log changes
-  useEffect(() => {
-    console.log(
-      `[HealthTracker] Steps: ${dailySteps} | Calories: ${caloriesBurned} kcal | Distance: ${distanceMeters.toFixed(1)}m | Live MET: ${liveMet}`,
-    );
-  }, [dailySteps, caloriesBurned, distanceMeters, liveMet]);
-
-  //! Get today's total steps and estimate time
-  const getTodaySteps = async () => {
-    try {
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-      const end = new Date();
-
-      const result = await Pedometer.getStepCountAsync(start, end);
-      const steps = result.steps;
-
-      const estimatedSeconds = (steps / 100) * 60;
-
-      dispatch(updateActivity({ steps, walkingSeconds: estimatedSeconds }));
-    } catch (error) {
-      console.log("Get steps error:", error);
-    }
-  };
-
-  //! Initialize Pedometer
-  useEffect(() => {
-    const initialize = async () => {
+    const initializeData = async () => {
+      // 1. Check Sensor Permissions First
       const isAvailable = await Pedometer.isAvailableAsync();
       setIsPedometerAvailable(String(isAvailable));
       if (!isAvailable) return;
@@ -164,13 +86,56 @@ export default function DashboardScreen() {
       const { status } = await Pedometer.requestPermissionsAsync();
       if (status !== "granted") return;
 
-      await getTodaySteps();
+      // 2. Fetch from Firebase
+      let firebaseSteps = 0;
+      let firebaseSeconds = 0;
+      const userId = auth.currentUser?.uid;
+      const today = new Date().toISOString().split("T")[0];
+
+      if (userId) {
+        try {
+          const currentRef = doc(db, "users", userId, "history", today);
+          const currentSnap = await getDoc(currentRef);
+          if (currentSnap.exists()) {
+            const data = currentSnap.data();
+            if (data.date === today) {
+              firebaseSteps = data.steps || 0;
+              firebaseSeconds = data.walkingSeconds || 0;
+            } else {
+              dispatch(resetDailyStats());
+            }
+          }
+        } catch (error) {
+          console.log("Firebase load error:", error);
+        }
+      }
+
+      // 3. Fetch from Phone's Hardware Pedometer
+      let deviceSteps = 0;
+      let deviceSeconds = 0;
+      try {
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        const result = await Pedometer.getStepCountAsync(start, new Date());
+        deviceSteps = result.steps;
+        deviceSeconds = (deviceSteps / 100) * 60;
+      } catch (error) {
+        console.log("Device pedometer error:", error);
+      }
+
+      // 4. Take whichever is higher so we NEVER downgrade!
+      const actualSteps = Math.max(firebaseSteps, deviceSteps);
+      const actualSeconds = Math.max(firebaseSeconds, deviceSeconds);
+
+      dispatch(
+        updateActivity({ steps: actualSteps, walkingSeconds: actualSeconds }),
+      );
     };
 
-    initialize();
-  }, []);
+    initializeData();
+  }, [dispatch]);
 
-  //! Time-Delta Pedometer Watcher (Live Physics)
+  // 3. Lightweight UI Watcher (Instant Speed ONLY)
   useEffect(() => {
     let subscription;
     let lastTime = Date.now();
@@ -180,7 +145,6 @@ export default function DashboardScreen() {
       const isAvailable = await Pedometer.isAvailableAsync();
       if (!isAvailable) return;
 
-      // Initialize base step count so delta doesn't spike on load
       const start = new Date();
       start.setHours(0, 0, 0, 0);
       const initialResult = await Pedometer.getStepCountAsync(
@@ -189,53 +153,25 @@ export default function DashboardScreen() {
       );
       lastSessionSteps = initialResult.steps;
 
-      subscription = Pedometer.watchStepCount(async (result) => {
+      subscription = Pedometer.watchStepCount((result) => {
         const now = Date.now();
-
-        // 1. Calculate Delta (Difference between now and last event)
         const deltaSteps = result.steps - lastSessionSteps;
         const deltaTimeSec = (now - lastTime) / 1000;
 
-        // 2. Process Live Physics if actually moving
         if (deltaSteps > 0 && deltaTimeSec > 0 && strideLength > 0) {
-          // Execute the un-generalized pipeline
           const deltaDistance = calculateDistance(deltaSteps, strideLength);
           const liveSpeed = calculateSpeed(deltaDistance, deltaTimeSec);
-          const liveMetVal = calculateMET(liveSpeed);
 
-          // Calculate precise calories for just this window
-          const deltaCalories = calculateCalories(
-            weight,
-            deltaTimeSec,
-            liveMetVal,
-          );
-
-          // Update local UI
+          // ONLY update local UI state here. No Redux dispatch!
           setInstantSpeed(liveSpeed);
-
-          // Accumulate into Redux
-          dispatch(
-            addLiveActivity({
-              deltaSteps,
-              deltaDistance,
-              deltaWalkingSeconds: deltaTimeSec,
-              deltaCalories,
-            }),
-          );
         }
 
-        // Update tracking variables
         lastSessionSteps = result.steps;
         lastTime = now;
 
-        // -----------------------------------------
-        // The "Sitting" Timeout
-        // If 3 seconds pass with no new steps, drop speed to 0
-        // -----------------------------------------
-        if (sittingTimer.current) clearTimeout(sittingTimer.current);
-        sittingTimer.current = setTimeout(() => {
-          setInstantSpeed(0);
-        }, 3000);
+        // Reset the live speed dial to 0 if no new steps come in for 3 seconds
+        if (uiSittingTimer.current) clearTimeout(uiSittingTimer.current);
+        uiSittingTimer.current = setTimeout(() => setInstantSpeed(0), 3000);
       });
     };
 
@@ -243,91 +179,17 @@ export default function DashboardScreen() {
 
     return () => {
       subscription?.remove();
-      if (sittingTimer.current) clearTimeout(sittingTimer.current);
+      if (uiSittingTimer.current) clearTimeout(uiSittingTimer.current);
     };
-  }, [dispatch, strideLength, weight]); // Added weight as dependency
+  }, [strideLength]);
 
-  //! Step-based Notifications
-  useEffect(() => {
-    const triggerStepBasedNotification = async () => {
-      if (dailySteps >= 2000 && dailySteps < 5000 && !hasNotified2k) {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "🚰 Cơ thể đang mất nước!",
-            body: `Bạn đã đi được ${dailySteps} bước. Hãy uống một ngụm nước để bù khoáng nhé!`,
-            data: { type: "WATER_ACTIVITY_REMINDER" },
-          },
-          trigger: null,
-        });
-        setHasNotified2k(true);
-      }
-
-      if (dailySteps >= 5000 && !hasNotified5k) {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "🧘‍♂️ Tới giờ nghỉ ngơi rồi!",
-            body: `Tuyệt vời! ${dailySteps} bước là một quãng đường dài. Hãy ngồi nghỉ 5-10 phút để cơ bắp phục hồi nhé.`,
-            data: { type: "REST_REMINDER" },
-          },
-          trigger: null,
-        });
-        setHasNotified5k(true);
-      }
-    };
-
-    triggerStepBasedNotification();
-  }, [dailySteps]);
-
-  //! Auto-sync data to Firebase
-  useEffect(() => {
-    if (dailySteps === 0) return;
-
-    const timeoutId = setTimeout(async () => {
-      const userId = auth.currentUser?.uid;
-      if (!userId) return;
-
-      const today = new Date().toISOString().split("T")[0];
-      const historyRef = doc(db, "users", userId, "history", today);
-
-      try {
-        await setDoc(
-          historyRef,
-          {
-            steps: dailySteps,
-            calories: caloriesBurned,
-            distance: distanceMeters,
-            walkingSeconds: walkingSeconds,
-            date: today,
-            updatedAt: new Date(),
-          },
-          { merge: true },
-        );
-        console.log(`Đã đồng bộ lên Cloud: ${dailySteps} bước`);
-      } catch (error) {
-        console.log("Lỗi đồng bộ dữ liệu:", error);
-      }
-    }, 2000);
-
-    return () => clearTimeout(timeoutId);
-  }, [dailySteps, caloriesBurned, distanceMeters, walkingSeconds]);
+  const styles = makeStyles(theme, spacing, softShadow);
 
   return (
-    <LinearGradient
-      colors={[colors.darkBg, colors.darkBg2, colors.darkBg]}
-      style={styles.container}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-    >
+    <View style={styles.container}>
       {isPedometerAvailable === "checking" ? (
         <View style={styles.loaderContainer}>
-          <LinearGradient
-            colors={[colors.neonCyan, colors.neonPurple]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.loaderGradient}
-          >
-            <ActivityIndicator color={colors.textPrimary} size="large" />
-          </LinearGradient>
+          <ActivityIndicator color={theme.primary} size="large" />
         </View>
       ) : (
         <ScrollView
@@ -335,147 +197,140 @@ export default function DashboardScreen() {
           contentContainerStyle={styles.scrollContent}
         >
           <Animated.View style={{ opacity: fadeOpacity }}>
-            {/* Header */}
             <Animated.View style={slideTransform}>
-              <View style={styles.header}>
-                <Text style={styles.headerTitle}>LIVE STATS</Text>
-                <Text style={styles.headerSubtitle}>
-                  Real-time Fitness Tracking
+              <Text style={styles.headerTitle}>Today's Activity</Text>
+              <Text style={styles.headerSubtitle}>
+                Keep going — every step counts
+              </Text>
+            </Animated.View>
+
+            {/* Main progress card */}
+            <Animated.View style={slideTransform}>
+              <View style={styles.mainCard}>
+                <View style={styles.mainCardTop}>
+                  <View>
+                    <Text style={styles.label}>Steps</Text>
+                    <Text style={styles.mainValue}>{dailySteps}</Text>
+                    <Text style={styles.subtext}>
+                      Goal: {DAILY_GOAL.toLocaleString()}
+                    </Text>
+                  </View>
+                  <View style={styles.iconCircle}>
+                    <Ionicons name="walk" size={26} color={theme.primary} />
+                  </View>
+                </View>
+
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${progressPct * 100}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.progressLabel}>
+                  {Math.round(progressPct * 100)}% of daily goal
                 </Text>
               </View>
             </Animated.View>
 
-            {/* Main Steps Card */}
-            <Animated.View style={slideTransform}>
-              <LinearGradient
-                colors={[colors.darkBg2, colors.darkBg3]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.mainCard}
-              >
-                <Animated.View style={[styles.stepPulse, scaleAnimation]}>
-                  <LinearGradient
-                    colors={[colors.neonCyan, colors.neonPurple]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.stepPulseGradient}
-                  />
-                </Animated.View>
-
-                <Text style={styles.label}>🚶 Steps Today</Text>
-                <Animated.Text
-                  style={[
-                    styles.mainValue,
-                    {
-                      opacity: pulseOpacity,
-                    },
-                  ]}
-                >
-                  {dailySteps}
-                </Animated.Text>
-                <Text style={styles.subtext}>Steps</Text>
-              </LinearGradient>
-            </Animated.View>
-
-            {/* Quick Stats Grid */}
+            {/* Quick stats */}
             <Animated.View style={slideTransform}>
               <View style={styles.statsGrid}>
-                {/* Calories Card */}
-                <LinearGradient
-                  colors={[colors.neonYellow + "20", colors.neonYellow + "10"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={[styles.statCard, { borderColor: colors.neonYellow }]}
+                <View
+                  style={[
+                    styles.statCard,
+                    { borderColor: theme.statOrange + "33" },
+                  ]}
                 >
-                  <Text style={styles.statIcon}>🔥</Text>
+                  <Ionicons name="flame" size={22} color={theme.statOrange} />
                   <Text style={styles.statLabel}>Calories</Text>
-                  <Text
-                    style={[styles.statValue, { color: colors.neonYellow }]}
-                  >
+                  <Text style={[styles.statValue, { color: theme.statOrange }]}>
                     {caloriesBurned}
                   </Text>
                   <Text style={styles.statUnit}>kcal</Text>
-                </LinearGradient>
+                </View>
 
-                {/* Distance Card */}
-                <LinearGradient
-                  colors={[colors.neonGreen + "20", colors.neonGreen + "10"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={[styles.statCard, { borderColor: colors.neonGreen }]}
+                <View
+                  style={[
+                    styles.statCard,
+                    { borderColor: theme.statGreen + "33" },
+                  ]}
                 >
-                  <Text style={styles.statIcon}>📍</Text>
+                  <Ionicons name="navigate" size={22} color={theme.statGreen} />
                   <Text style={styles.statLabel}>Distance</Text>
-                  <Text style={[styles.statValue, { color: colors.neonGreen }]}>
+                  <Text style={[styles.statValue, { color: theme.statGreen }]}>
                     {(distanceMeters / 1000).toFixed(2)}
                   </Text>
                   <Text style={styles.statUnit}>km</Text>
-                </LinearGradient>
+                </View>
               </View>
             </Animated.View>
 
-            {/* Live Metrics */}
+            {/* Live metrics */}
             <Animated.View style={slideTransform}>
               <View style={styles.liveMetricsContainer}>
-                <Text style={styles.metricsTitle}>⚡ Live Metrics</Text>
-
-                {/* Speed Card */}
-                <LinearGradient
-                  colors={[colors.neonBlue + "20", colors.neonCyan + "10"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={[styles.metricCard, { borderColor: colors.neonCyan }]}
-                >
-                  <View style={styles.metricHeader}>
-                    <Text style={styles.metricIcon}>💨</Text>
-                    <Text style={styles.metricName}>Speed</Text>
-                  </View>
-                  <Text
-                    style={[styles.metricBigValue, { color: colors.neonCyan }]}
-                  >
-                    {instantSpeed.toFixed(2)}
-                  </Text>
-                  <Text style={styles.metricUnitSmall}>m/s</Text>
-                </LinearGradient>
-
-                {/* Intensity Card */}
-                <LinearGradient
-                  colors={[colors.neonMagenta + "20", colors.neonPink + "10"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={[
-                    styles.metricCard,
-                    { borderColor: colors.neonMagenta },
-                  ]}
-                >
-                  <View style={styles.metricHeader}>
-                    <Text style={styles.metricIcon}>⚡</Text>
-                    <Text style={styles.metricName}>Intensity</Text>
-                  </View>
-                  <Text
+                <Text style={styles.metricsTitle}>Live Metrics</Text>
+                <View style={styles.metricRow}>
+                  <View
                     style={[
-                      styles.metricBigValue,
-                      { color: colors.neonMagenta },
+                      styles.metricCard,
+                      { borderColor: theme.statBlue + "33" },
                     ]}
                   >
-                    {liveMet.toFixed(1)}
-                  </Text>
-                  <Text style={styles.metricUnitSmall}>MET</Text>
-                </LinearGradient>
-
-                {/* Time Card */}
-                <LinearGradient
-                  colors={[colors.neonGreen + "20", colors.neonCyan + "10"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={[styles.metricCard, { borderColor: colors.neonGreen }]}
-                >
-                  <View style={styles.metricHeader}>
-                    <Text style={styles.metricIcon}>⏱️</Text>
-                    <Text style={styles.metricName}>Time</Text>
+                    <Ionicons
+                      name="speedometer-outline"
+                      size={18}
+                      color={theme.statBlue}
+                    />
+                    <Text style={styles.metricName}>Speed</Text>
+                    <Text
+                      style={[styles.metricBigValue, { color: theme.statBlue }]}
+                    >
+                      {instantSpeed.toFixed(2)}
+                    </Text>
+                    <Text style={styles.metricUnitSmall}>m/s</Text>
                   </View>
+
+                  <View
+                    style={[
+                      styles.metricCard,
+                      { borderColor: theme.statPurple + "33" },
+                    ]}
+                  >
+                    <Ionicons
+                      name="pulse-outline"
+                      size={18}
+                      color={theme.statPurple}
+                    />
+                    <Text style={styles.metricName}>Intensity</Text>
+                    <Text
+                      style={[
+                        styles.metricBigValue,
+                        { color: theme.statPurple },
+                      ]}
+                    >
+                      {liveMet.toFixed(1)}
+                    </Text>
+                    <Text style={styles.metricUnitSmall}>MET</Text>
+                  </View>
+                </View>
+
+                <View
+                  style={[
+                    styles.metricCard,
+                    styles.metricCardWide,
+                    { borderColor: theme.statGreen + "33" },
+                  ]}
+                >
+                  <Ionicons
+                    name="time-outline"
+                    size={18}
+                    color={theme.statGreen}
+                  />
+                  <Text style={styles.metricName}>Active Time</Text>
                   <Text
-                    style={[styles.metricBigValue, { color: colors.neonGreen }]}
+                    style={[styles.metricBigValue, { color: theme.statGreen }]}
                   >
                     {(() => {
                       const hh = Math.floor(walkingSeconds / 3600);
@@ -487,265 +342,193 @@ export default function DashboardScreen() {
                     })()}
                   </Text>
                   <Text style={styles.metricUnitSmall}>hh:mm:ss</Text>
-                </LinearGradient>
+                </View>
               </View>
             </Animated.View>
 
-            {/* Status Section */}
+            {/* Sensor status */}
             <Animated.View style={slideTransform}>
-              <LinearGradient
-                colors={[colors.darkBg3, colors.darkBg2]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.statusCard}
-              >
-                <View style={styles.statusItem}>
-                  <Text style={styles.statusIcon}>📡</Text>
-                  <View style={styles.statusContent}>
-                    <Text style={styles.statusLabel}>Sensor Status</Text>
-                    <Text
-                      style={[
-                        styles.statusValue,
-                        {
-                          color:
-                            isPedometerAvailable === "true"
-                              ? colors.neonGreen
-                              : colors.neonYellow,
-                        },
-                      ]}
-                    >
-                      {isPedometerAvailable === "true"
-                        ? "● Active"
-                        : "● Unavailable"}
-                    </Text>
-                  </View>
+              <View style={styles.statusCard}>
+                <Ionicons
+                  name="hardware-chip-outline"
+                  size={20}
+                  color={theme.textSecondary}
+                />
+                <View style={styles.statusContent}>
+                  <Text style={styles.statusLabel}>Sensor Status</Text>
+                  <Text
+                    style={[
+                      styles.statusValue,
+                      {
+                        color:
+                          isPedometerAvailable === "true"
+                            ? theme.success
+                            : theme.warning,
+                      },
+                    ]}
+                  >
+                    {isPedometerAvailable === "true" ? "Active" : "Unavailable"}
+                  </Text>
                 </View>
-              </LinearGradient>
+              </View>
             </Animated.View>
           </Animated.View>
         </ScrollView>
       )}
-    </LinearGradient>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loaderGradient: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    justifyContent: "center",
-    alignItems: "center",
-    ...shadows.neonCyan,
-  },
-  scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
-  },
-  header: {
-    marginBottom: spacing.xxl,
-  },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: "900",
-    color: colors.neonCyan,
-    letterSpacing: 2,
-    textShadowColor: colors.neonCyan,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginTop: spacing.md,
-    fontWeight: "600",
-    letterSpacing: 0.5,
-  },
-  mainCard: {
-    borderRadius: 20,
-    padding: spacing.xxl,
-    marginBottom: spacing.xl,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.neonCyan,
-    borderOpacity: 0.2,
-    ...shadows.soft,
-    position: "relative",
-    overflow: "hidden",
-  },
-  stepPulse: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: "80%",
-    height: 200,
-    borderRadius: 100,
-  },
-  stepPulseGradient: {
-    width: "100%",
-    height: "100%",
-    opacity: 0.1,
-  },
-  label: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    fontWeight: "700",
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    marginBottom: spacing.sm,
-  },
-  mainValue: {
-    fontSize: 64,
-    fontWeight: "900",
-    color: colors.neonCyan,
-    textShadowColor: colors.neonCyan,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 15,
-  },
-  subtext: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: spacing.sm,
-    fontWeight: "600",
-  },
-  statsGrid: {
-    flexDirection: "row",
-    gap: spacing.md,
-    marginBottom: spacing.xl,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 16,
-    padding: spacing.lg,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderOpacity: 0.3,
-    minHeight: 140,
-  },
-  statIcon: {
-    fontSize: 28,
-    marginBottom: spacing.sm,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    marginBottom: spacing.sm,
-  },
-  statValue: {
-    fontSize: 28,
-    fontWeight: "900",
-    marginBottom: spacing.xs,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
-  },
-  statUnit: {
-    fontSize: 10,
-    color: colors.textMuted,
-    fontWeight: "600",
-  },
-  liveMetricsContainer: {
-    marginBottom: spacing.xl,
-  },
-  metricsTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: colors.neonCyan,
-    letterSpacing: 1,
-    marginBottom: spacing.lg,
-    textTransform: "uppercase",
-  },
-  metricCard: {
-    borderRadius: 14,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderOpacity: 0.3,
-    ...shadows.soft,
-  },
-  metricHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: spacing.md,
-  },
-  metricIcon: {
-    fontSize: 22,
-    marginRight: spacing.md,
-  },
-  metricName: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
-  metricBigValue: {
-    fontSize: 32,
-    fontWeight: "900",
-    marginBottom: spacing.xs,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
-  },
-  metricUnitSmall: {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontWeight: "600",
-  },
-  statusCard: {
-    borderRadius: 14,
-    padding: spacing.lg,
-    marginBottom: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.neonGreen,
-    borderOpacity: 0.2,
-    ...shadows.soft,
-  },
-  statusItem: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  statusIcon: {
-    fontSize: 24,
-    marginRight: spacing.lg,
-  },
-  statusContent: {
-    flex: 1,
-  },
-  statusLabel: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    marginBottom: spacing.xs,
-  },
-  statusValue: {
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  testButton: {
-    paddingVertical: spacing.lg,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    ...shadows.neonPurple,
-  },
-  testButtonText: {
-    color: colors.textPrimary,
-    fontWeight: "800",
-    fontSize: 14,
-    letterSpacing: 1,
-  },
-});
+const makeStyles = (theme, spacing, softShadow) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: theme.bg },
+    loaderContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    scrollContent: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.xxl,
+    },
+    headerTitle: { fontSize: 24, fontWeight: "800", color: theme.textPrimary },
+    headerSubtitle: {
+      fontSize: 13,
+      color: theme.textSecondary,
+      marginTop: spacing.xs,
+      marginBottom: spacing.xl,
+      fontWeight: "500",
+    },
+    mainCard: {
+      backgroundColor: theme.card,
+      borderRadius: 20,
+      padding: spacing.xl,
+      marginBottom: spacing.lg,
+      borderWidth: 1,
+      borderColor: theme.border,
+      ...softShadow(),
+    },
+    mainCardTop: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      marginBottom: spacing.lg,
+    },
+    iconCircle: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: theme.primary + "1A",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    label: {
+      fontSize: 12,
+      color: theme.textSecondary,
+      fontWeight: "700",
+      letterSpacing: 0.5,
+      textTransform: "uppercase",
+      marginBottom: spacing.xs,
+    },
+    mainValue: { fontSize: 42, fontWeight: "900", color: theme.textPrimary },
+    subtext: {
+      fontSize: 12,
+      color: theme.textMuted,
+      marginTop: spacing.xs,
+      fontWeight: "600",
+    },
+    progressTrack: {
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: theme.bg3,
+      overflow: "hidden",
+    },
+    progressFill: {
+      height: "100%",
+      borderRadius: 5,
+      backgroundColor: theme.primary,
+    },
+    progressLabel: {
+      fontSize: 12,
+      color: theme.textMuted,
+      marginTop: spacing.sm,
+      fontWeight: "600",
+    },
+    statsGrid: {
+      flexDirection: "row",
+      gap: spacing.md,
+      marginBottom: spacing.lg,
+    },
+    statCard: {
+      flex: 1,
+      backgroundColor: theme.card,
+      borderRadius: 16,
+      padding: spacing.lg,
+      borderWidth: 1,
+      minHeight: 120,
+      gap: spacing.xs,
+    },
+    statLabel: {
+      fontSize: 11,
+      color: theme.textSecondary,
+      fontWeight: "700",
+      textTransform: "uppercase",
+    },
+    statValue: { fontSize: 24, fontWeight: "900" },
+    statUnit: { fontSize: 10, color: theme.textMuted, fontWeight: "600" },
+    liveMetricsContainer: { marginBottom: spacing.lg },
+    metricsTitle: {
+      fontSize: 13,
+      fontWeight: "800",
+      color: theme.textPrimary,
+      marginBottom: spacing.md,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    metricRow: {
+      flexDirection: "row",
+      gap: spacing.md,
+      marginBottom: spacing.md,
+    },
+    metricCard: {
+      flex: 1,
+      backgroundColor: theme.card,
+      borderRadius: 14,
+      padding: spacing.lg,
+      borderWidth: 1,
+      gap: spacing.xs,
+    },
+    metricCardWide: { width: "100%" },
+    metricName: {
+      fontSize: 11,
+      color: theme.textSecondary,
+      fontWeight: "700",
+      textTransform: "uppercase",
+    },
+    metricBigValue: { fontSize: 26, fontWeight: "900" },
+    metricUnitSmall: {
+      fontSize: 11,
+      color: theme.textMuted,
+      fontWeight: "600",
+    },
+    statusCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.card,
+      borderRadius: 14,
+      padding: spacing.lg,
+      borderWidth: 1,
+      borderColor: theme.border,
+      gap: spacing.md,
+    },
+    statusContent: { flex: 1 },
+    statusLabel: {
+      fontSize: 11,
+      color: theme.textSecondary,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      marginBottom: spacing.xs,
+    },
+    statusValue: { fontSize: 14, fontWeight: "800" },
+  });
