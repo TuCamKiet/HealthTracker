@@ -216,9 +216,10 @@ export default function HistoryScreen() {
                   yAxisSuffix=""
                   fromZero={true}
                   chartConfig={{
-                    backgroundColor: "transparent",
-                    backgroundGradientFrom: "transparent",
-                    backgroundGradientTo: "transparent",
+                    // ADD THESE TWO LINES:
+                    backgroundGradientFrom: theme.card,
+                    backgroundGradientTo: theme.card,
+                    backgroundColor: "transparent", // Keep this transparent
                     decimalPlaces: 0,
                     color: chartColor,
                     labelColor: labelColor,
