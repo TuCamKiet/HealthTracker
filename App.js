@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ActivityIndicator, View, TouchableOpacity, Text } from "react-native";
 import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import Ionicons from "@react-native-vector-icons/ionicons";
 
 // Redux imports
 import { Provider } from "react-redux";
@@ -151,6 +152,7 @@ export default function App() {
                   component={DashboardScreen}
                   options={({ navigation }) => ({
                     title: "FIT ZONE",
+                    headerTitleAlign: "center", // Locks the title in the center
 
                     headerStyle: {
                       backgroundColor: colors.darkBg2,
@@ -164,57 +166,53 @@ export default function App() {
                     },
 
                     headerShadowVisible: false,
+
+                    // History Icon on the Left
+                    headerLeft: () => (
+                      <TouchableOpacity
+                        style={{
+                          marginLeft: 16,
+                          padding: 8,
+                          borderRadius: 20,
+                          borderWidth: 1,
+                          borderColor: colors.neonCyan,
+                          backgroundColor: "rgba(0,217,255,0.12)",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          ...shadows.soft,
+                        }}
+                        onPress={() => navigation.navigate("History")}
+                      >
+                        <Ionicons
+                          name="time-outline"
+                          size={15}
+                          color={colors.neonCyan}
+                        />
+                      </TouchableOpacity>
+                    ),
+
+                    // Profile Icon on the Right
                     headerRight: () => (
-                      <View style={{ flexDirection: "row", gap: 20 }}>
-                        <TouchableOpacity
-                          style={{
-                            marginHorizontal: 6,
-                            paddingHorizontal: 14,
-                            paddingVertical: 7,
-                            borderRadius: 20,
-                            borderWidth: 1,
-                            borderColor: colors.neonCyan,
-                            backgroundColor: "rgba(0,217,255,0.12)",
-                            ...shadows.soft,
-                          }}
-                          onPress={() => navigation.navigate("History")}
-                        >
-                          <Text
-                            style={{
-                              color: colors.neonCyan,
-                              fontWeight: "800",
-                              letterSpacing: 1,
-                              fontSize: 12,
-                            }}
-                          >
-                            HISTORY
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={{
-                            marginHorizontal: 6,
-                            paddingHorizontal: 14,
-                            paddingVertical: 7,
-                            borderRadius: 20,
-                            borderWidth: 1,
-                            borderColor: colors.neonPurple,
-                            backgroundColor: "rgba(139,92,246,0.12)",
-                            ...shadows.soft,
-                          }}
-                          onPress={() => navigation.navigate("Profile")}
-                        >
-                          <Text
-                            style={{
-                              color: colors.neonPurple,
-                              fontWeight: "800",
-                              letterSpacing: 1,
-                              fontSize: 12,
-                            }}
-                          >
-                            PROFILE
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
+                      <TouchableOpacity
+                        style={{
+                          marginRight: 16,
+                          padding: 8,
+                          borderRadius: 20,
+                          borderWidth: 1,
+                          borderColor: colors.neonPurple,
+                          backgroundColor: "rgba(139,92,246,0.12)",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          ...shadows.soft,
+                        }}
+                        onPress={() => navigation.navigate("Profile")}
+                      >
+                        <Ionicons
+                          name="person-outline"
+                          size={15}
+                          color={colors.neonPurple}
+                        />
+                      </TouchableOpacity>
                     ),
                   })}
                 />

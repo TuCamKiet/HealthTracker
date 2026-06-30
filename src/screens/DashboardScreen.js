@@ -63,7 +63,7 @@ export default function DashboardScreen() {
   const { opacity: fadeOpacity } = useFadeInAnimation(200);
   const { transform: slideTransform } = useSlideInAnimation(true, 300);
   const { opacity: pulseOpacity } = usePulseAnimation(2500);
-  const scaleAnimation = useScalePulseAnimation(0.95, 1.05, 2000);
+  const scaleAnimation = useScalePulseAnimation(0.95, 1.1, 2000);
 
   //! Notification
   useEffect(() => {
@@ -583,9 +583,9 @@ const styles = StyleSheet.create({
   },
   stepPulse: {
     position: "absolute",
-    top: -50,
-    right: -50,
-    width: 200,
+    top: 0,
+    left: 0,
+    width: "80%",
     height: 200,
     borderRadius: 100,
   },
