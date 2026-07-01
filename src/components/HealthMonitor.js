@@ -3,8 +3,12 @@ import { useDispatch, useSelector } from "react-redux";
 import { Pedometer } from "expo-sensors";
 import * as Notifications from "expo-notifications";
 import { auth, db } from "../services/firebaseConfig";
-import { doc, setDoc } from "firebase/firestore";
-import { addLiveActivity } from "../redux/slices/healthSlice";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import {
+  addLiveActivity,
+  updateActivity,
+  resetDailyStats,
+} from "../redux/slices/healthSlice";
 import {
   calculateDistance,
   calculateSpeed,
@@ -12,7 +16,7 @@ import {
   calculateCalories,
 } from "../utils/HealthCalculator";
 
-const WATER_MILESTONE = 20;
+const WATER_MILESTONE = 2000;
 const REST_MILESTONE = 5000;
 const SITTING_THRESHOLD_MS = 3600 * 1000;
 
@@ -31,7 +35,68 @@ export default function HealthMonitor() {
   const lastRestMilestone = useRef(0);
   const inactivityTimer = useRef(null);
 
-  // 1. Global Pedometer Watcher (Now safely using Deltas!)
+  // 1. Load initial step data — always tries Firebase first,
+  //    then tops up with device pedometer if sensor is available.
+  //    This means the emulator (no sensor) still shows synced data.
+  useEffect(() => {
+    const initializeData = async () => {
+      const userId = auth.currentUser?.uid;
+      const today = new Date().toISOString().split("T")[0];
+
+      // --- Step A: always fetch from Firebase ---
+      let firebaseSteps = 0;
+      let firebaseSeconds = 0;
+
+      if (userId) {
+        try {
+          const snap = await getDoc(doc(db, "users", userId, "history", today));
+          if (snap.exists()) {
+            const data = snap.data();
+            if (data.date === today) {
+              firebaseSteps = data.steps || 0;
+              firebaseSeconds = data.walkingSeconds || 0;
+            } else {
+              dispatch(resetDailyStats());
+            }
+          }
+        } catch (e) {
+          console.log("Firebase load error:", e);
+        }
+      }
+
+      // --- Step B: try device pedometer (may not exist on emulator) ---
+      let deviceSteps = 0;
+      let deviceSeconds = 0;
+
+      const isAvailable = await Pedometer.isAvailableAsync();
+      if (isAvailable) {
+        const { status } = await Pedometer.requestPermissionsAsync();
+        if (status === "granted") {
+          try {
+            const start = new Date();
+            start.setHours(0, 0, 0, 0);
+            const result = await Pedometer.getStepCountAsync(start, new Date());
+            deviceSteps = result.steps;
+            deviceSeconds = (deviceSteps / 100) * 60;
+          } catch (e) {
+            console.log("Device pedometer error:", e);
+          }
+        }
+      }
+
+      // --- Step C: take whichever is higher so we never downgrade ---
+      const actualSteps = Math.max(firebaseSteps, deviceSteps);
+      const actualSeconds = Math.max(firebaseSeconds, deviceSeconds);
+      dispatch(
+        updateActivity({ steps: actualSteps, walkingSeconds: actualSeconds }),
+      );
+    };
+
+    initializeData();
+  }, [dispatch]);
+
+  // 2. Live pedometer watcher — only runs when sensor is available.
+  //    On emulator this block is simply skipped; Firebase data still shows.
   useEffect(() => {
     let subscription;
     let lastTime = Date.now();
@@ -58,7 +123,7 @@ export default function HealthMonitor() {
 
     const subscribe = async () => {
       const isAvailable = await Pedometer.isAvailableAsync();
-      if (!isAvailable) return;
+      if (!isAvailable) return; // no live tracking on emulator — data already loaded from Firebase above
 
       const start = new Date();
       start.setHours(0, 0, 0, 0);
@@ -75,7 +140,7 @@ export default function HealthMonitor() {
 
       subscription = Pedometer.watchStepCount((result) => {
         const now = Date.now();
-        const deltaSteps = result.steps - lastSessionSteps; // Calculate only new steps
+        const deltaSteps = result.steps - lastSessionSteps;
         const deltaTimeSec = (now - lastTime) / 1000;
 
         if (deltaSteps > 0 && deltaTimeSec > 0 && strideLength > 0) {
@@ -88,7 +153,6 @@ export default function HealthMonitor() {
             liveMetVal,
           );
 
-          // ADD to the total, do not overwrite!
           dispatch(
             addLiveActivity({
               deltaSteps,
@@ -118,7 +182,7 @@ export default function HealthMonitor() {
     };
   }, [dispatch, strideLength, weight]);
 
-  // 2. Milestone Notifications
+  // 3. Milestone Notifications
   useEffect(() => {
     const checkMilestones = async () => {
       const waterMilestone =
@@ -152,7 +216,7 @@ export default function HealthMonitor() {
     checkMilestones();
   }, [dailySteps]);
 
-  // 3. Auto-sync to Firebase
+  // 4. Auto-sync to Firebase
   useEffect(() => {
     if (dailySteps === 0) return;
     const timeoutId = setTimeout(async () => {

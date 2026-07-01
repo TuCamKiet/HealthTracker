@@ -13,23 +13,31 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.company.health_tracker"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "@react-native-firebase/app",
-      "@react-native-firebase/messaging",
       "@react-native-vector-icons/ionicons",
-      "@react-native-vector-icons/material-icons"
-    ]
+      "@react-native-vector-icons/material-icons",
+      "expo-background-task"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "a91c53a2-e296-4ee5-bb91-e67b0204aba6"
+      }
+    },
+    "owner": "tucamkiet"
   }
 }

@@ -14,15 +14,24 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@react-native-vector-icons/ionicons";
-import { auth } from "../services/firebaseConfig";
+import { auth, db } from "../services/firebaseConfig";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendEmailVerification,
   signOut,
 } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../context/ThemeContext";
 import { useFadeInAnimation, useBounceAnimation } from "../utils/animations";
+
+const SESSION_KEY = "@session_id";
+
+// Generates a unique session token for this login event
+function generateSessionId() {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+}
 
 export default function LoginScreen() {
   const { theme, spacing, softShadow } = useTheme();
@@ -62,6 +71,16 @@ export default function LoginScreen() {
           await signOut(auth);
           return;
         }
+
+        // Write a new sessionId — any other device watching this document
+        // will detect the change and be signed out automatically
+        const sessionId = generateSessionId();
+        await AsyncStorage.setItem(SESSION_KEY, sessionId);
+        await setDoc(
+          doc(db, "users", userCredential.user.uid),
+          { sessionId },
+          { merge: true },
+        );
       } else {
         const userCredential = await createUserWithEmailAndPassword(
           auth,

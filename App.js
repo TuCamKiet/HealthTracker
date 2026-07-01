@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { ActivityIndicator, View, TouchableOpacity, Text } from "react-native";
+import {
+  ActivityIndicator,
+  View,
+  TouchableOpacity,
+  Text,
+  Alert,
+} from "react-native";
 import {
   NavigationContainer,
   DefaultTheme,
@@ -17,9 +23,19 @@ import { setUserData } from "./src/redux/slices/healthSlice";
 import { ThemeProvider, useTheme } from "./src/context/ThemeContext";
 
 // Firebase imports
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth, db } from "./src/services/firebaseConfig";
 import { doc, onSnapshot } from "firebase/firestore";
+
+// Session
+import AsyncStorage from "@react-native-async-storage/async-storage";
+const SESSION_KEY = "@session_id";
+
+// Background tracking
+import {
+  registerBackgroundStepTask,
+  unregisterBackgroundStepTask,
+} from "./src/services/backgroundStepTask";
 
 // Screens
 import DashboardScreen from "./src/screens/DashboardScreen";
@@ -58,17 +74,39 @@ function AppNavigator() {
       setUser(currentUser);
 
       if (currentUser) {
+        registerBackgroundStepTask();
+
         const userRef = doc(db, "users", currentUser.uid);
 
         unsubProfile = onSnapshot(
           userRef,
-          (userSnap) => {
-            if (
-              userSnap.exists() &&
-              userSnap.data().height &&
-              userSnap.data().weight
-            ) {
-              const data = userSnap.data();
+          async (userSnap) => {
+            if (!userSnap.exists()) {
+              setHasProfile(false);
+              if (initializing) setInitializing(false);
+              return;
+            }
+
+            const data = userSnap.data();
+
+            // ---- Single-device session check ----
+            // If Firestore has a sessionId, compare it to what this device
+            // stored locally at login time. A mismatch means another device
+            // logged in after us — sign this device out immediately.
+            if (data.sessionId) {
+              const localSessionId = await AsyncStorage.getItem(SESSION_KEY);
+              if (localSessionId && data.sessionId !== localSessionId) {
+                await AsyncStorage.removeItem(SESSION_KEY);
+                await signOut(auth);
+                Alert.alert(
+                  "Signed out",
+                  "Your account was signed in on another device.",
+                );
+                return; // onAuthStateChanged will fire again with null
+              }
+            }
+
+            if (data.height && data.weight) {
               dispatch(
                 setUserData({
                   height: data.height,
@@ -81,6 +119,7 @@ function AppNavigator() {
             } else {
               setHasProfile(false);
             }
+
             if (initializing) setInitializing(false);
           },
           (error) => {
@@ -91,6 +130,7 @@ function AppNavigator() {
         );
       } else {
         setHasProfile(false);
+        unregisterBackgroundStepTask();
         if (unsubProfile) unsubProfile();
         if (initializing) setInitializing(false);
       }
@@ -130,7 +170,7 @@ function AppNavigator() {
 
   return (
     <NavigationContainer theme={NavTheme}>
-      {/* The brain runs globally here */}
+      {/* The brain runs globally here — covers foreground tracking on any screen */}
       {user && <HealthMonitor />}
       <Stack.Navigator
         screenOptions={{
